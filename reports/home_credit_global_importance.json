@@ -1,0 +1,62 @@
+[
+  {
+    "feature": "EXT_SOURCE_3",
+    "gain_importance": 224109.4651556015
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "gain_importance": 214538.43019533157
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "gain_importance": 82777.53613233566
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "gain_importance": 38933.24468898773
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "gain_importance": 36191.963943481445
+  },
+  {
+    "feature": "bureau_debt_ratio_component",
+    "gain_importance": 36190.17158460617
+  },
+  {
+    "feature": "previous_application_credit_gap",
+    "gain_importance": 28558.22011566162
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "gain_importance": 27440.747136592865
+  },
+  {
+    "feature": "AMT_CREDIT",
+    "gain_importance": 27439.806313991547
+  },
+  {
+    "feature": "AMT_GOODS_PRICE",
+    "gain_importance": 25677.21937608719
+  },
+  {
+    "feature": "installment_days_late",
+    "gain_importance": 23345.343335151672
+  },
+  {
+    "feature": "installment_AMT_PAYMENT",
+    "gain_importance": 23292.329315662384
+  },
+  {
+    "feature": "pos_CNT_INSTALMENT_FUTURE",
+    "gain_importance": 20375.087908744812
+  },
+  {
+    "feature": "installment_payment_gap",
+    "gain_importance": 19637.485323429108
+  },
+  {
+    "feature": "pos_record_count",
+    "gain_importance": 19344.338654518127
+  }
+]

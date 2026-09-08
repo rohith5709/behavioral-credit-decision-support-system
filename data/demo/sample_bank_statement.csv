@@ -1,0 +1,21 @@
+date,description,debit,credit,balance
+2026-01-01,Salary credit,0,50000,50000
+2026-01-03,Rent payment,15000,0,35000
+2026-01-05,Electricity bill,1800,0,33200
+2026-01-07,EMI payment,6000,0,27200
+2026-01-10,Grocery store,3200,0,24000
+2026-01-14,Mobile recharge,500,0,23500
+2026-01-20,UPI restaurant,900,0,22600
+2026-02-01,Salary credit,0,50000,72600
+2026-02-03,Rent payment,15000,0,57600
+2026-02-06,Electricity bill,1850,0,55750
+2026-02-08,EMI payment,6000,0,49750
+2026-02-12,Grocery store,3500,0,46250
+2026-02-18,Internet broadband,900,0,45350
+2026-02-22,UPI pharmacy,650,0,44700
+2026-03-01,Salary credit,0,50000,94700
+2026-03-03,Rent payment,15000,0,79700
+2026-03-06,Water utility bill,600,0,79100
+2026-03-08,EMI payment,6000,0,73100
+2026-03-15,Grocery store,3400,0,69700
+2026-03-20,UPI fuel station,2000,0,67700

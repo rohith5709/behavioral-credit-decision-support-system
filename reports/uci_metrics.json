@@ -1,0 +1,7 @@
+{
+  "roc_auc": 0.7496,
+  "pr_auc": 0.504,
+  "recall_at_0_50": 0.6051,
+  "precision_at_0_50": 0.4364,
+  "test_rows": 6000
+}

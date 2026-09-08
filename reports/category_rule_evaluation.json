@@ -1,0 +1,232 @@
+{
+  "dataset": "data/evaluation/labelled_transactions.csv",
+  "rows": 12,
+  "note": "Small manually labelled regression sample; it is not a production-performance claim.",
+  "macro_precision": 1.0,
+  "macro_recall": 1.0,
+  "macro_f1": 1.0,
+  "per_category": [
+    {
+      "category": "Cash withdrawal",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "EMI/loan repayment",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Groceries",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Healthcare",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Income/other",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Other",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Rent",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Salary/income",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Shopping/discretionary",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 2
+    },
+    {
+      "category": "Transport/fuel",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    },
+    {
+      "category": "Utilities",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 1
+    }
+  ],
+  "confusion_matrix": {
+    "Cash withdrawal": {
+      "Cash withdrawal": 1,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "EMI/loan repayment": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 1,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Groceries": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 1,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Healthcare": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 1,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Income/other": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 1,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Other": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 1,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Rent": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 1,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Salary/income": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 1,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Shopping/discretionary": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 2,
+      "Transport/fuel": 0,
+      "Utilities": 0
+    },
+    "Transport/fuel": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 1,
+      "Utilities": 0
+    },
+    "Utilities": {
+      "Cash withdrawal": 0,
+      "EMI/loan repayment": 0,
+      "Groceries": 0,
+      "Healthcare": 0,
+      "Income/other": 0,
+      "Other": 0,
+      "Rent": 0,
+      "Salary/income": 0,
+      "Shopping/discretionary": 0,
+      "Transport/fuel": 0,
+      "Utilities": 1
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": "statement-affordability-v1",
+  "components": {
+    "savings_ratio": {"max_points": 25, "bands": [[0.30, 25], [0.20, 20], [0.10, 15], [0.00, 8]]},
+    "emi_burden": {"max_points": 25, "bands": [[0.20, 25], [0.30, 20], [0.40, 12], [0.50, 5]]},
+    "salary_consistency": {"max_points": 20, "bands": [[0.05, 20], [0.15, 16], [0.30, 10], [0.50, 5]]},
+    "expense_stability": {"max_points": 15},
+    "utility_regularity": {"max_points": 10},
+    "data_quality": {"max_points": 5}
+  },
+  "decision_bands": {"approve_at": 75, "manual_review_at": 45},
+  "hard_stops": {"minimum_months": 3, "minimum_quality_score": 0.80, "maximum_existing_emi_ratio": 0.50, "maximum_proposed_emi_ratio": 0.50, "minimum_emergency_buffer_months": 0.25, "maximum_uncertain_transaction_share": 0.25}
+}

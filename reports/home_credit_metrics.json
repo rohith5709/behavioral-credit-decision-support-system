@@ -1,0 +1,15 @@
+{
+  "model": "LightGBM (balanced)",
+  "training_rows": 246008,
+  "training_seconds": 9.47,
+  "roc_auc": 0.773,
+  "pr_auc": 0.266,
+  "brier_score": 0.1777,
+  "recall_at_0_50": 0.6632,
+  "precision_at_0_50": 0.1822,
+  "model_name": "LightGBM (balanced)",
+  "selection_metric": "ROC-AUC, then PR-AUC, then lower Brier score",
+  "train_rows": 246008,
+  "test_rows": 61503,
+  "feature_count": 61
+}

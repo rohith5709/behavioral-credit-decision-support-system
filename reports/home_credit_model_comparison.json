@@ -1,0 +1,59 @@
+{
+  "dataset": "Home Credit Default Risk",
+  "split": "Stratified 80/20 hold-out split, random_state=42",
+  "threshold": 0.5,
+  "selection_metric": "ROC-AUC, then PR-AUC, then lower Brier score",
+  "selected_model": "LightGBM (balanced)",
+  "models": [
+    {
+      "model": "Logistic regression (balanced)",
+      "training_rows": 246008,
+      "training_seconds": 3.8,
+      "roc_auc": 0.749,
+      "pr_auc": 0.2244,
+      "brier_score": 0.2026,
+      "recall_at_0_50": 0.6794,
+      "precision_at_0_50": 0.1624
+    },
+    {
+      "model": "LightGBM (unweighted)",
+      "training_rows": 246008,
+      "training_seconds": 5.71,
+      "roc_auc": 0.7711,
+      "pr_auc": 0.2623,
+      "brier_score": 0.0668,
+      "recall_at_0_50": 0.0278,
+      "precision_at_0_50": 0.552
+    },
+    {
+      "model": "LightGBM (balanced)",
+      "training_rows": 246008,
+      "training_seconds": 9.47,
+      "roc_auc": 0.773,
+      "pr_auc": 0.266,
+      "brier_score": 0.1777,
+      "recall_at_0_50": 0.6632,
+      "precision_at_0_50": 0.1822
+    },
+    {
+      "model": "Random forest (balanced, 50k cap)",
+      "training_rows": 50000,
+      "training_seconds": 15.94,
+      "roc_auc": 0.7424,
+      "pr_auc": 0.2216,
+      "brier_score": 0.1218,
+      "recall_at_0_50": 0.3791,
+      "precision_at_0_50": 0.2342
+    },
+    {
+      "model": "XGBoost (balanced, 50k cap)",
+      "training_rows": 50000,
+      "training_seconds": 2.29,
+      "roc_auc": 0.754,
+      "pr_auc": 0.24,
+      "brier_score": 0.1488,
+      "recall_at_0_50": 0.5428,
+      "precision_at_0_50": 0.1982
+    }
+  ]
+}

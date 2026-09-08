@@ -1,0 +1,30 @@
+{
+  "selected_model": "LightGBM (balanced)",
+  "dataset_split": "Stratified 80/20 hold-out split, random_state=42",
+  "rows": [
+    {
+      "threshold": 0.2,
+      "recall": 0.3351,
+      "precision": 0.3067,
+      "flagged_applicant_rate": 0.0882
+    },
+    {
+      "threshold": 0.3,
+      "recall": 0.1519,
+      "precision": 0.4161,
+      "flagged_applicant_rate": 0.0295
+    },
+    {
+      "threshold": 0.4,
+      "recall": 0.053,
+      "precision": 0.526,
+      "flagged_applicant_rate": 0.0081
+    },
+    {
+      "threshold": 0.5,
+      "recall": 0.0109,
+      "precision": 0.6207,
+      "flagged_applicant_rate": 0.0014
+    }
+  ]
+}

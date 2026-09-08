@@ -1,0 +1,52 @@
+# Python environments and generated caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Downloaded or generated data. Keep only small, safe demo/evaluation inputs.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/home_credit/*
+!data/home_credit/.gitkeep
+data/synthetic/*
+!data/synthetic/.gitkeep
+!data/synthetic/simulator_behaviour_features.csv
+external/
+
+# Generated model artefacts. The selected demo model is intentionally versioned
+# so that the validation dashboard works after cloning.
+models/*
+!models/home_credit_lightgbm.joblib
+
+# Version only the small, presentation-ready evaluation artefacts.
+reports/*
+!reports/category_rule_evaluation.json
+!reports/home_credit_calibration.json
+!reports/home_credit_global_importance.json
+!reports/home_credit_metrics.json
+!reports/home_credit_model_comparison.json
+!reports/home_credit_threshold_analysis.json
+!reports/uci_metrics.json
+
+# Editor and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store

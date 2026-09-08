@@ -1,0 +1,13 @@
+description,debit,credit,expected_category
+Monthly salary payroll,0,50000,Salary/income
+House rent transfer,15000,0,Rent
+HDFC EMI repayment,6000,0,EMI/loan repayment
+Electricity utility bill,1800,0,Utilities
+DMart grocery purchase,3200,0,Groceries
+Uber ride,450,0,Transport/fuel
+Apollo pharmacy,900,0,Healthcare
+Swiggy food order,650,0,Shopping/discretionary
+ATM cash withdrawal,5000,0,Cash withdrawal
+Amazon marketplace,2500,0,Shopping/discretionary
+Unknown merchant payment,1100,0,Other
+Freelance client transfer,0,12000,Income/other

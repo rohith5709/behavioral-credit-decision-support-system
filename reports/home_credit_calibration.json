@@ -1,0 +1,36 @@
+{
+  "selected_model": "LightGBM (balanced)",
+  "method": "Platt scaling (3-fold sigmoid calibration)",
+  "uncalibrated_brier_score": 0.1777,
+  "calibrated_brier_score": 0.0667,
+  "reliability": [
+    {
+      "mean_predicted_risk": 0.0416,
+      "observed_default_rate": 0.0403
+    },
+    {
+      "mean_predicted_risk": 0.1402,
+      "observed_default_rate": 0.1358
+    },
+    {
+      "mean_predicted_risk": 0.2408,
+      "observed_default_rate": 0.2519
+    },
+    {
+      "mean_predicted_risk": 0.3422,
+      "observed_default_rate": 0.3742
+    },
+    {
+      "mean_predicted_risk": 0.4379,
+      "observed_default_rate": 0.5061
+    },
+    {
+      "mean_predicted_risk": 0.5352,
+      "observed_default_rate": 0.6265
+    },
+    {
+      "mean_predicted_risk": 0.6209,
+      "observed_default_rate": 0.5
+    }
+  ]
+}

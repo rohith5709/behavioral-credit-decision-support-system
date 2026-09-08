@@ -1,0 +1,14 @@
+{
+  "version": "statement-categories-v1",
+  "categories": {
+    "Salary/income": ["salary", "payroll", "wages", "income", "stipend", "pension"],
+    "Rent": ["\\brent\\b", "lease"],
+    "EMI/loan repayment": ["\\bemi\\b", "loan", "instal+ment", "finance"],
+    "Utilities": ["electric", "water", "gas", "broadband", "internet", "mobile", "telephone", "utility", "recharge", "jio", "airtel", "vodafone", "bsnl"],
+    "Groceries": ["grocery", "supermarket", "\\bmart\\b", "vegetable", "milk", "dmart", "bigbasket", "blinkit", "zepto"],
+    "Transport/fuel": ["fuel", "petrol", "diesel", "metro", "uber", "ola", "rapido", "parking", "irctc"],
+    "Healthcare": ["pharmacy", "hospital", "clinic", "medical", "doctor", "apollo"],
+    "Shopping/discretionary": ["restaurant", "cafe", "zomato", "swiggy", "shopping", "amazon", "flipkart", "myntra", "movie", "entertainment"],
+    "Cash withdrawal": ["\\batm\\b", "cash withdrawal", "cash withdraw"]
+  }
+}
