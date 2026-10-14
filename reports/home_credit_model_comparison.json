@@ -1,59 +1,73 @@
 {
   "dataset": "Home Credit Default Risk",
-  "split": "Stratified 80/20 hold-out split, random_state=42",
-  "threshold": 0.5,
-  "selection_metric": "ROC-AUC, then PR-AUC, then lower Brier score",
+  "evaluation_protocol": {
+    "strategy": "Stratified train/validation/untouched-test split",
+    "random_seed": 42,
+    "train_rows": 196806,
+    "validation_rows": 49202,
+    "test_rows": 61503,
+    "train_fraction": 0.64,
+    "validation_fraction": 0.16,
+    "test_fraction": 0.2,
+    "note": "Model, calibration, and threshold choices were made without accessing final test labels."
+  },
+  "selection_metric": "Validation PR-AUC, then validation ROC-AUC, then lower validation Brier score",
   "selected_model": "LightGBM (balanced)",
   "models": [
     {
       "model": "Logistic regression (balanced)",
-      "training_rows": 246008,
-      "training_seconds": 3.8,
-      "roc_auc": 0.749,
-      "pr_auc": 0.2244,
-      "brier_score": 0.2026,
-      "recall_at_0_50": 0.6794,
-      "precision_at_0_50": 0.1624
+      "training_rows": 196806,
+      "training_seconds": 6.73,
+      "roc_auc": 0.7455,
+      "pr_auc": 0.2143,
+      "brier_score": 0.2051,
+      "recall": 0.6707,
+      "precision": 0.16,
+      "f1": 0.2584
     },
     {
       "model": "LightGBM (unweighted)",
-      "training_rows": 246008,
-      "training_seconds": 5.71,
-      "roc_auc": 0.7711,
-      "pr_auc": 0.2623,
-      "brier_score": 0.0668,
-      "recall_at_0_50": 0.0278,
-      "precision_at_0_50": 0.552
+      "training_rows": 196806,
+      "training_seconds": 8.51,
+      "roc_auc": 0.7669,
+      "pr_auc": 0.2491,
+      "brier_score": 0.0675,
+      "recall": 0.0257,
+      "precision": 0.5543,
+      "f1": 0.0491
     },
     {
       "model": "LightGBM (balanced)",
-      "training_rows": 246008,
-      "training_seconds": 9.47,
-      "roc_auc": 0.773,
-      "pr_auc": 0.266,
-      "brier_score": 0.1777,
-      "recall_at_0_50": 0.6632,
-      "precision_at_0_50": 0.1822
+      "training_rows": 196806,
+      "training_seconds": 15.55,
+      "roc_auc": 0.7674,
+      "pr_auc": 0.251,
+      "brier_score": 0.1767,
+      "recall": 0.6528,
+      "precision": 0.1821,
+      "f1": 0.2848
     },
     {
       "model": "Random forest (balanced, 50k cap)",
       "training_rows": 50000,
-      "training_seconds": 15.94,
-      "roc_auc": 0.7424,
-      "pr_auc": 0.2216,
-      "brier_score": 0.1218,
-      "recall_at_0_50": 0.3791,
-      "precision_at_0_50": 0.2342
+      "training_seconds": 25.0,
+      "roc_auc": 0.742,
+      "pr_auc": 0.2146,
+      "brier_score": 0.1223,
+      "recall": 0.3781,
+      "precision": 0.2284,
+      "f1": 0.2848
     },
     {
       "model": "XGBoost (balanced, 50k cap)",
       "training_rows": 50000,
-      "training_seconds": 2.29,
-      "roc_auc": 0.754,
-      "pr_auc": 0.24,
-      "brier_score": 0.1488,
-      "recall_at_0_50": 0.5428,
-      "precision_at_0_50": 0.1982
+      "training_seconds": 4.03,
+      "roc_auc": 0.7492,
+      "pr_auc": 0.232,
+      "brier_score": 0.1516,
+      "recall": 0.5418,
+      "precision": 0.1945,
+      "f1": 0.2863
     }
   ]
 }

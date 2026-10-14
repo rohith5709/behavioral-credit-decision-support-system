@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import numpy as np
 import pandas as pd
 
@@ -17,7 +18,85 @@ _category_config = json.loads(CATEGORY_CONFIG_PATH.read_text(encoding="utf-8"))
 CATEGORY_RULES: tuple[tuple[str, str], ...] = tuple(
     (label, "|".join(patterns)) for label, patterns in _category_config["categories"].items()
 )
+CATEGORY_OPTIONS: tuple[str, ...] = tuple(_category_config["categories"]) + ("Other", "Income/other")
 ESSENTIAL_CATEGORIES = {"Rent", "EMI/loan repayment", "Utilities", "Groceries", "Transport/fuel", "Healthcare"}
+NON_INCOME_CREDIT_CATEGORIES = {
+    "Refund/reversal",
+    "Transfer/other inflow",
+    "Cash deposit",
+    "Loan disbursement",
+    "Investment redemption",
+}
+
+
+def normalise_merchant_key(description: object) -> str:
+    """Create a conservative grouping key for repeated statement narrations.
+
+    The key is for an officer's bulk-review convenience only. It does not infer
+    that descriptions with a similar key belong to the same real-world merchant.
+    """
+    value = str(description or "").lower()
+    value = re.sub(r"\d+", " ", value)
+    value = re.sub(r"[^a-z]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def build_repeated_merchant_groups(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Return repeat-description groups that an officer may review in bulk."""
+    if "description" not in transactions:
+        raise ValueError("Transactions are missing required column: description")
+    grouped = transactions.copy()
+    grouped["merchant_key"] = grouped["description"].map(normalise_merchant_key)
+    grouped = grouped[grouped["merchant_key"].ne("")]
+    if grouped.empty:
+        return pd.DataFrame(columns=["merchant_key", "example_description", "transactions", "current_categories"])
+    groups = (
+        grouped.groupby("merchant_key", sort=True, observed=True)
+        .agg(
+            example_description=("description", "first"),
+            transactions=("description", "size"),
+            current_categories=("category", lambda values: ", ".join(sorted(set(map(str, values))))),
+        )
+        .reset_index()
+    )
+    return groups[groups["transactions"].ge(2)].reset_index(drop=True)
+
+
+def apply_bulk_category_override(
+    transactions: pd.DataFrame,
+    merchant_key: str,
+    category: str,
+    reviewer: str,
+    rationale: str,
+    timestamp_utc: str,
+) -> tuple[pd.DataFrame, int]:
+    """Apply one reviewed category to all rows sharing a displayed merchant key.
+
+    A non-empty rationale and an allowed category are required so that the bulk
+    operation remains reviewable. The original rule category is retained.
+    """
+    if category not in CATEGORY_OPTIONS:
+        raise ValueError(f"Unknown transaction category: {category}")
+    if not rationale.strip():
+        raise ValueError("A rationale is required for a bulk category override.")
+    result = categorise_statement_transactions(transactions)
+    keys = result["description"].map(normalise_merchant_key)
+    matches = keys.eq(merchant_key)
+    if not matches.any():
+        raise ValueError("No transactions match the selected merchant group.")
+    if "original_category" not in result:
+        result["original_category"] = result["category"]
+    result["original_category"] = result["original_category"].fillna(result["category"])
+    changed = matches & result["category"].ne(category)
+    result.loc[changed, "category"] = category
+    result.loc[changed, "category_review_status"] = "Officer bulk override"
+    result.loc[changed, "category_confidence"] = 1.0
+    result.loc[changed, "category_reviewer"] = reviewer or "Not supplied"
+    result.loc[changed, "category_override_rationale"] = rationale.strip()
+    result.loc[changed, "category_override_timestamp_utc"] = timestamp_utc
+    result["is_essential"] = result["category"].isin(ESSENTIAL_CATEGORIES)
+    result["is_discretionary"] = result["category"].eq("Shopping/discretionary")
+    return result, int(changed.sum())
 
 
 def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFrame:
@@ -38,6 +117,7 @@ def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFram
         result["original_category"] = result.get("original_category", result["category"])
         result["category_confidence"] = result.get("category_confidence", 1.0)
         result["category_review_status"] = result.get("category_review_status", "Officer override")
+        result["category_match_count"] = result.get("category_match_count", 1)
         result["is_essential"] = result["category"].isin(ESSENTIAL_CATEGORIES)
         result["is_discretionary"] = result["category"].eq("Shopping/discretionary")
         return result
@@ -55,14 +135,91 @@ def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFram
     result["original_category"] = category
     result["category_confidence"] = np.where(match_count.eq(1), 1.0, np.where(match_count.gt(1), 0.5, 0.0))
     result["category_review_status"] = np.where(match_count.eq(1), "Rule match", "Uncertain / needs review")
+    result["category_match_count"] = match_count
     result["is_essential"] = result["category"].isin(ESSENTIAL_CATEGORIES)
     result["is_discretionary"] = result["category"].eq("Shopping/discretionary")
     return result
 
 
+def annotate_income_evidence(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Separate recognised recurring income from other statement credits.
+
+    A credit is not automatically income. Salary-labelled credits are recognised
+    as income evidence; otherwise an unlabelled credit must recur in at least two
+    calendar months with a reasonably stable amount before it is treated as a
+    recurring-income candidate. This is still statement evidence, not employer
+    verification.
+    """
+    result = categorise_statement_transactions(transactions)
+    result["date"] = pd.to_datetime(result["date"], errors="coerce")
+    result["income_evidence"] = "Not an inflow"
+    result["income_evidence_confidence"] = 0.0
+    credit_mask = result["credit"] > 0
+    result.loc[credit_mask, "income_evidence"] = "Unverified other credit"
+
+    salary_mask = credit_mask & result["category"].eq("Salary/income")
+    result.loc[salary_mask, "income_evidence"] = "Salary/income rule match"
+    result.loc[salary_mask, "income_evidence_confidence"] = 0.75
+
+    for category in NON_INCOME_CREDIT_CATEGORIES:
+        category_mask = credit_mask & result["category"].eq(category)
+        result.loc[category_mask, "income_evidence"] = category
+
+    candidate_mask = credit_mask & result["category"].eq("Income/other") & result["date"].notna()
+    if candidate_mask.any():
+        candidate = result.loc[candidate_mask, ["description", "credit", "date"]].copy()
+        candidate["month"] = candidate["date"].dt.to_period("M")
+        candidate["source_key"] = (
+            candidate["description"].fillna("").astype(str).str.lower()
+            .str.replace(r"\\d+", "", regex=True).str.replace(r"[^a-z]+", " ", regex=True)
+            .str.replace(r"\\s+", " ", regex=True).str.strip()
+        )
+        for source_key, group in candidate.groupby("source_key", sort=False):
+            if not source_key or group["month"].nunique() < 2:
+                continue
+            mean_credit = float(group["credit"].mean())
+            variation = float(group["credit"].std(ddof=0) / mean_credit) if mean_credit else 1.0
+            if variation <= 0.20:
+                matches = candidate_mask & (
+                    result["description"].fillna("").astype(str).str.lower()
+                    .str.replace(r"\\d+", "", regex=True).str.replace(r"[^a-z]+", " ", regex=True)
+                    .str.replace(r"\\s+", " ", regex=True).str.strip().eq(source_key)
+                )
+                result.loc[matches, "income_evidence"] = "Recurring income candidate"
+                result.loc[matches, "income_evidence_confidence"] = 0.60
+    result["is_recognised_income"] = result["income_evidence"].isin(
+        {"Salary/income rule match", "Recurring income candidate"}
+    )
+    return result
+
+
+def _daily_balance_series(transactions: pd.DataFrame) -> pd.Series:
+    """Reconstruct observed daily closing balances by forward-filling transaction-day balances."""
+    if "balance" not in transactions or transactions["balance"].abs().sum() == 0:
+        return pd.Series(dtype="float64")
+    dated = transactions.dropna(subset=["date"]).sort_values("date").copy()
+    if dated.empty:
+        return pd.Series(dtype="float64")
+    dated["day"] = dated["date"].dt.normalize()
+    daily = dated.groupby("day", observed=True)["balance"].last()
+    return daily.reindex(pd.date_range(daily.index.min(), daily.index.max(), freq="D")).ffill().dropna()
+
+
+def _month_coverage(transactions: pd.DataFrame) -> tuple[int, bool]:
+    """Return observed months and whether either boundary month is incomplete."""
+    dates = transactions["date"].dropna().sort_values()
+    if dates.empty:
+        return 0, False
+    months = int(dates.dt.to_period("M").nunique())
+    first_partial = dates.iloc[0].day > 5
+    last_date = dates.iloc[-1]
+    last_partial = last_date.day < (last_date.days_in_month - 5)
+    return months, bool(first_partial or (last_partial and months > 1))
+
+
 def build_monthly_statement_summary(transactions: pd.DataFrame) -> pd.DataFrame:
     """Build a month-level cash-flow view from categorised statement transactions."""
-    result = categorise_statement_transactions(transactions)
+    result = annotate_income_evidence(transactions)
     result["date"] = pd.to_datetime(result["date"], errors="coerce")
     result = result.dropna(subset=["date"])
     if result.empty:
@@ -71,7 +228,11 @@ def build_monthly_statement_summary(transactions: pd.DataFrame) -> pd.DataFrame:
     result["month"] = result["date"].dt.to_period("M")
     grouped = result.groupby("month", observed=True)
     summary = pd.DataFrame({
-        "income": grouped["credit"].sum(),
+        "income": result.loc[result["is_recognised_income"]].groupby("month", observed=True)["credit"].sum(),
+        "gross_credits": grouped["credit"].sum(),
+        "other_credits": result.loc[
+            (result["credit"] > 0) & ~result["is_recognised_income"]
+        ].groupby("month", observed=True)["credit"].sum(),
         "expense": grouped["debit"].sum(),
         "salary_income": result.loc[result["category"].eq("Salary/income")].groupby("month", observed=True)["credit"].sum(),
         "essential_expense": result.loc[result["is_essential"]].groupby("month", observed=True)["debit"].sum(),
@@ -122,16 +283,17 @@ def add_uci_behavioral_features(frame: pd.DataFrame) -> pd.DataFrame:
     return result.replace([np.inf, -np.inf], np.nan)
 
 
-def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.0, requested_amount: float = 0.0, proposed_emi: float = 0.0) -> dict[str, float]:
+def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.0, requested_amount: float = 0.0, proposed_emi: float = 0.0) -> dict[str, object]:
     """Derive affordability features from normalised bank-statement transactions.
 
     `transactions` must contain `date`, `description`, `debit`, and `credit`.
-    Credit transactions are treated as inflows; debit transactions as outflows.
+    Credits are retained as inflows, but affordability income is restricted to
+    recognised recurring income evidence rather than every credit transaction.
     """
     if transactions.empty:
         raise ValueError("At least one transaction is required for behavioural analysis.")
 
-    result = categorise_statement_transactions(transactions)
+    result = annotate_income_evidence(transactions)
     result["date"] = pd.to_datetime(result["date"], errors="coerce")
     result = result.dropna(subset=["date"])
     if result.empty:
@@ -141,8 +303,13 @@ def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.
     result["debit"] = pd.to_numeric(result["debit"], errors="coerce").fillna(0.0)
     result["month"] = result["date"].dt.to_period("M")
     monthly_summary = build_monthly_statement_summary(result)
-    month_count = len(monthly_summary)
-    total_income = float(result["credit"].sum())
+    month_count, has_partial_boundary_month = _month_coverage(result)
+    total_credits = float(result["credit"].sum())
+    total_income = float(result.loc[result["is_recognised_income"], "credit"].sum())
+    other_credits = total_credits - total_income
+    uncertain_credit_amount = float(result.loc[
+        (result["credit"] > 0) & result["category_review_status"].eq("Uncertain / needs review"), "credit"
+    ].sum())
     total_expense = float(result["debit"].sum())
     average_income = total_income / month_count
     average_expense = total_expense / month_count
@@ -162,15 +329,16 @@ def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.
         if salary_months and monthly_summary["salary_income"].mean() > 0
         else 1.0
     )
+    trend_available = month_count >= 3 and not has_partial_boundary_month
     income_trend = (
         float((monthly_summary["income"].iloc[-1] - monthly_summary["income"].iloc[0]) / monthly_summary["income"].iloc[0])
-        if month_count > 1 and monthly_summary["income"].iloc[0] > 0
-        else 0.0
+        if trend_available and monthly_summary["income"].iloc[0] > 0
+        else None
     )
     savings_trend = (
         float((monthly_summary["surplus"].iloc[-1] - monthly_summary["surplus"].iloc[0]) / average_income)
-        if month_count > 1 and average_income > 0
-        else 0.0
+        if trend_available and average_income > 0
+        else None
     )
     expense_variation = float(monthly_summary["expense"].std(ddof=0) / average_expense) if average_expense else 0.0
     nonzero_balances = monthly_summary["closing_balance"].dropna()
@@ -180,38 +348,46 @@ def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.
         else 0.0
     )
     low_balance_threshold = 0.10 * average_income
-    low_balance_days = (
-        int((result["balance"] < low_balance_threshold).sum())
-        if "balance" in result and result["balance"].abs().sum() > 0
-        else 0
-    )
-    has_balance_history = bool("balance" in result and result["balance"].abs().sum() > 0)
+    daily_balances = _daily_balance_series(result)
+    has_balance_history = not daily_balances.empty
+    low_balance_days = int((daily_balances < low_balance_threshold).sum()) if has_balance_history else 0
     monthly_surplus = monthly_summary["surplus"]
     transaction_frequency = float(len(result) / month_count)
     cash_withdrawal_share = float(result.loc[result["category"].eq("Cash withdrawal"), "debit"].sum() / total_expense) if total_expense else 0.0
     recurring_rent = float((result.loc[result["category"].eq("Rent")].groupby("month")["debit"].sum() > 0).mean()) if (result["category"] == "Rent").any() else 0.0
     grocery_transport = result["category"].isin(["Groceries", "Transport/fuel"])
-    grocery_transport_trend = float((result.loc[grocery_transport].groupby("month")["debit"].sum().reindex(result["month"].drop_duplicates(), fill_value=0).iloc[-1] - result.loc[grocery_transport].groupby("month")["debit"].sum().reindex(result["month"].drop_duplicates(), fill_value=0).iloc[0]) / average_income) if month_count > 1 and average_income else 0.0
-    average_closing_balance = float(nonzero_balances.mean()) if len(nonzero_balances) else 0.0
+    grocery_transport_trend = float((result.loc[grocery_transport].groupby("month")["debit"].sum().reindex(result["month"].drop_duplicates(), fill_value=0).iloc[-1] - result.loc[grocery_transport].groupby("month")["debit"].sum().reindex(result["month"].drop_duplicates(), fill_value=0).iloc[0]) / average_income) if trend_available and average_income else None
+    average_closing_balance = float(daily_balances.mean()) if has_balance_history else 0.0
+    minimum_daily_balance = float(daily_balances.min()) if has_balance_history else None
     emergency_buffer_months = average_closing_balance / average_expense if average_expense else 0.0
-    negative_balance_count = int((result["balance"] < 0).sum()) if has_balance_history else 0
+    negative_balance_count = int((daily_balances < 0).sum()) if has_balance_history else 0
     low_balance_sequence = 0
     max_low_balance_sequence = 0
     if has_balance_history:
-        for low in (result["balance"] < low_balance_threshold):
+        for low in (daily_balances < low_balance_threshold):
             low_balance_sequence = low_balance_sequence + 1 if low else 0
             max_low_balance_sequence = max(max_low_balance_sequence, low_balance_sequence)
     salary_series = monthly_summary["salary_income"]
     missed_salary_months = int((salary_series == 0).sum())
     salary_frequency = "monthly" if salary_months >= max(month_count - 1, 1) else "irregular" if salary_months else "unknown"
-    income_sources = int(result.loc[result["credit"] > 0, "description"].str.lower().str.replace(r"\d+", "", regex=True).nunique())
+    recognised_income_months = int((monthly_summary["income"] > 0).sum())
+    income_sources = int(result.loc[result["is_recognised_income"], "description"].str.lower().str.replace(r"\d+", "", regex=True).nunique())
     uncertain_share = float(result["category_review_status"].eq("Uncertain / needs review").mean())
     proposed_emi_ratio = (effective_emi + proposed_emi) / average_income if average_income else 0.0
+    discrepancy_base = max(float(monthly_emi), detected_emi, 1.0)
+    emi_discrepancy_ratio = abs(float(monthly_emi) - detected_emi) / discrepancy_base
+    emi_difference_amount = abs(float(monthly_emi) - detected_emi)
     typical_debit = float(result.loc[result["debit"] > 0, "debit"].median())
     large_spending_count = int((result["debit"] > max(2 * typical_debit, 0.15 * average_income)).sum()) if typical_debit else 0
 
     return {
         "months_observed": float(month_count),
+        "partial_boundary_month": has_partial_boundary_month,
+        "trend_available": trend_available,
+        "gross_statement_credits": total_credits,
+        "recognised_recurring_income": total_income,
+        "other_statement_credits": other_credits,
+        "uncertain_statement_credits": uncertain_credit_amount,
         "average_monthly_income": average_income,
         "average_monthly_expense": average_expense,
         "monthly_surplus": average_income - average_expense,
@@ -225,8 +401,13 @@ def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.
         "emi_to_income_ratio": effective_emi / average_income if average_income else 0.0,
         "utility_payment_count": float(utility_payments),
         "detected_monthly_emi": detected_emi,
+        "declared_monthly_emi": float(monthly_emi),
+        "effective_monthly_emi": effective_emi,
+        "emi_difference_amount": emi_difference_amount,
+        "emi_discrepancy_ratio": emi_discrepancy_ratio,
         "salary_income_share": salary_income / total_income if total_income else 0.0,
         "salary_income_months": float(salary_months),
+        "recognised_income_months": float(recognised_income_months),
         "essential_expense_ratio": essential_expense / total_expense if total_expense else 0.0,
         "discretionary_expense_ratio": discretionary_expense / total_expense if total_expense else 0.0,
         "utility_payment_regularity": utility_regularity,
@@ -237,11 +418,13 @@ def build_statement_features(transactions: pd.DataFrame, monthly_emi: float = 0.
         "transaction_frequency_per_month": transaction_frequency,
         "grocery_transport_trend_ratio": grocery_transport_trend,
         "low_balance_day_count": float(low_balance_days),
+        "balance_observed_days": float(len(daily_balances)),
         "balance_volatility_ratio": balance_volatility,
         "has_balance_history": float(has_balance_history),
         "large_spending_count": float(large_spending_count),
         "sudden_expense_spike_count": float((monthly_summary["expense"] > monthly_summary["expense"].median() * 1.5).sum()),
         "emergency_buffer_months": emergency_buffer_months,
+        "minimum_daily_balance": minimum_daily_balance,
         "negative_balance_count": float(negative_balance_count),
         "max_consecutive_low_balance_days": float(max_low_balance_sequence),
         "salary_frequency": salary_frequency,

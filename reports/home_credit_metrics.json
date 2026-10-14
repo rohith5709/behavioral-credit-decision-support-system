@@ -1,15 +1,37 @@
 {
-  "model": "LightGBM (balanced)",
-  "training_rows": 246008,
-  "training_seconds": 9.47,
-  "roc_auc": 0.773,
-  "pr_auc": 0.266,
-  "brier_score": 0.1777,
-  "recall_at_0_50": 0.6632,
-  "precision_at_0_50": 0.1822,
   "model_name": "LightGBM (balanced)",
-  "selection_metric": "ROC-AUC, then PR-AUC, then lower Brier score",
-  "train_rows": 246008,
-  "test_rows": 61503,
+  "dataset": "Home Credit Default Risk",
+  "evaluation_protocol": {
+    "strategy": "Stratified train/validation/untouched-test split",
+    "random_seed": 42,
+    "train_rows": 196806,
+    "validation_rows": 49202,
+    "test_rows": 61503,
+    "train_fraction": 0.64,
+    "validation_fraction": 0.16,
+    "test_fraction": 0.2,
+    "note": "Model, calibration, and threshold choices were made without accessing final test labels."
+  },
+  "selection_metric": "Validation PR-AUC, then validation ROC-AUC, then lower validation Brier score",
+  "calibration_method": "Platt scaling",
+  "final_test_metrics": {
+    "roc_auc": 0.7737,
+    "pr_auc": 0.2664,
+    "brier_score": 0.0667,
+    "recall": 0.3333,
+    "precision": 0.3053,
+    "f1": 0.3187,
+    "threshold": 0.2,
+    "confidence_intervals": {
+      "roc_auc": [
+        0.7668,
+        0.7811
+      ],
+      "pr_auc": [
+        0.2553,
+        0.2785
+      ]
+    }
+  },
   "feature_count": 61
 }

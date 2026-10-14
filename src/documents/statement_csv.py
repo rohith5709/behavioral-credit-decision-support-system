@@ -30,6 +30,7 @@ class StatementQualityReport:
     date_range_end: str | None
     duplicate_rows_removed: int
     invalid_date_rows: int
+    ambiguous_date_rows: int
     invalid_amount_cells: int
     both_debit_credit_rows: int
     zero_value_rows: int
@@ -75,7 +76,7 @@ def _quality_score(
     schema_score: float, raw_rows: int, valid_rows: int, duplicates: int,
     invalid_dates: int, invalid_amounts: int, balance_mismatches: int, observed_months: int,
     salary_income_detected: bool,
-    both_debit_credit_rows: int = 0, zero_value_rows: int = 0,
+    both_debit_credit_rows: int = 0, zero_value_rows: int = 0, ambiguous_dates: int = 0,
 ) -> tuple[float, tuple[str, ...]]:
     warnings: list[str] = []
     score = schema_score * min(valid_rows / max(raw_rows, 1), 1.0)
@@ -85,6 +86,10 @@ def _quality_score(
     if invalid_dates:
         warnings.append(f"Ignored {invalid_dates} row(s) with invalid dates.")
         score -= min(invalid_dates / max(raw_rows, 1), 0.20)
+    if ambiguous_dates:
+        warnings.append(
+            f"{ambiguous_dates} numeric date value(s) were interpreted as day-first; officer verification is recommended."
+        )
     if invalid_amounts:
         warnings.append(f"Converted {invalid_amounts} invalid amount cell(s) to zero; verify the source statement.")
         score -= min(invalid_amounts / max(raw_rows * 2, 1), 0.20)
@@ -125,6 +130,12 @@ def parse_statement_csv(
         raise ValueError("A selected mapping column was not found in the uploaded CSV.")
 
     result = pd.DataFrame({field: raw[mapping[field]] if mapping.get(field) else 0.0 for field in CANONICAL_COLUMNS})
+    raw_date_text = result["date"].fillna("").astype(str).str.strip()
+    numeric_dates = raw_date_text.str.extract(r"^(\d{1,2})[/-](\d{1,2})[/-]\d{2,4}$")
+    ambiguous_dates = int(
+        ((pd.to_numeric(numeric_dates[0], errors="coerce") <= 12)
+         & (pd.to_numeric(numeric_dates[1], errors="coerce") <= 12)).sum()
+    )
     result["date"] = pd.to_datetime(result["date"], errors="coerce", dayfirst=True, format="mixed")
     invalid_dates = int(result["date"].isna().sum())
     invalid_amounts = 0
@@ -171,13 +182,14 @@ def parse_statement_csv(
     score, warnings = _quality_score(
         schema_score, len(raw), len(result), duplicates, invalid_dates, invalid_amounts,
         balance_mismatches, observed_months,
-        salary_income_detected, both_debit_credit_rows, zero_value_rows,
+        salary_income_detected, both_debit_credit_rows, zero_value_rows, ambiguous_dates,
     )
     result = result.drop(columns=["_description_key", "_amount_key"])
     return result, StatementQualityReport(
         score=score, valid_transactions=len(result), rejected_rows=len(raw) - len(result), observed_months=observed_months,
         date_range_start=result["date"].min().date().isoformat(), date_range_end=result["date"].max().date().isoformat(),
         duplicate_rows_removed=duplicates, invalid_date_rows=invalid_dates,
+        ambiguous_date_rows=ambiguous_dates,
         invalid_amount_cells=invalid_amounts, both_debit_credit_rows=both_debit_credit_rows, zero_value_rows=zero_value_rows, balance_mismatch_rows=balance_mismatches,
         salary_income_detected=salary_income_detected,
         warnings=warnings,

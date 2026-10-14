@@ -2,7 +2,7 @@
 
 Command run: `python -m pytest -q`
 
-Result: **15 tests passed** on 2026-09-08.
+This report is a historical parser-coverage summary. The current full suite is run with `python -m pytest -q`; see `CLAIMS.md` for the boundary between software correctness tests and real-world validation.
 
 ## Parser coverage
 

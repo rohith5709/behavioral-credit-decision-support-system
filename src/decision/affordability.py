@@ -58,6 +58,7 @@ def assess_affordability(features: dict[str, float], quality_report: StatementQu
     savings_ratio = float(features.get("savings_ratio", 0.0))
     emi_ratio = float(features.get("emi_to_income_ratio", 0.0))
     salary_months = float(features.get("salary_income_months", 0.0))
+    recognised_income_months = float(features.get("recognised_income_months", salary_months))
     salary_consistency = float(features.get("salary_consistency_ratio", 1.0))
     expense_variation = float(features.get("expense_variation_ratio", 1.0))
     balance_volatility = float(features.get("balance_volatility_ratio", 0.0))
@@ -77,8 +78,8 @@ def assess_affordability(features: dict[str, float], quality_report: StatementQu
         f"Savings ratio is {savings_ratio:.1%}, contributing {components['Savings ratio (25)']:.0f}/25 affordability points.",
         f"EMI burden is {emi_ratio:.1%}, contributing {components['EMI burden (25)']:.0f}/25 affordability points.",
     ]
-    if salary_months:
-        reasons.append(f"Salary/income credits were detected in {salary_months:.0f} observed month(s).")
+    if recognised_income_months:
+        reasons.append(f"Recognised recurring income credits were found in {recognised_income_months:.0f} observed month(s).")
     if utility_regularity:
         reasons.append(f"Utility payments appeared in {utility_regularity:.0%} of observed months.")
 
@@ -88,14 +89,21 @@ def assess_affordability(features: dict[str, float], quality_report: StatementQu
         mandatory_review_reasons.append("Fewer than three months of transactions are available.")
     if not quality_report or quality_report.score < hard_stops["minimum_quality_score"]:
         mandatory_review_reasons.append("Statement data quality is below the 80% review threshold.")
-    if salary_months == 0:
-        mandatory_review_reasons.append("No salary/income credit was detected in the uploaded statement.")
+    if recognised_income_months == 0:
+        mandatory_review_reasons.append("No recognised recurring income was found in the uploaded statement.")
     if quality_report and quality_report.balance_mismatch_rows:
         mandatory_review_reasons.append("Balance transitions contradict the stated debit/credit values.")
     if emi_ratio > hard_stops["maximum_existing_emi_ratio"]:
         mandatory_review_reasons.append("EMI burden exceeds the 50% critical review threshold.")
     if float(features.get("proposed_emi_to_income_ratio", 0.0)) > hard_stops["maximum_proposed_emi_ratio"]:
         mandatory_review_reasons.append("Existing plus proposed EMI burden exceeds the critical review threshold.")
+    if (
+        float(features.get("emi_difference_amount", 0.0)) >= hard_stops["emi_discrepancy_minimum_amount"]
+        and float(features.get("emi_discrepancy_ratio", 0.0)) > hard_stops["emi_discrepancy_tolerance"]
+    ):
+        mandatory_review_reasons.append(
+            "Declared EMI and detected EMI-payment occurrence differ materially; officer verification is required."
+        )
     # Older or externally supplied feature dictionaries may not include this
     # Phase-6 measure. Missing evidence must be shown as unavailable, not
     # silently converted to a zero-month buffer and treated as a hard stop.

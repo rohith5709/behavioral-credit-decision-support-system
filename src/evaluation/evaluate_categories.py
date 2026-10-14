@@ -10,7 +10,11 @@ import pandas as pd
 from src.features.behavioral import categorise_statement_transactions
 
 
-def evaluate(input_path: str | Path, output_path: str | Path) -> dict[str, object]:
+def evaluate(
+    input_path: str | Path,
+    output_path: str | Path,
+    dataset_label: str = "Small manually labelled regression sample; it is not a production-performance claim.",
+) -> dict[str, object]:
     """Write simple macro precision/recall/F1 and a confusion matrix as JSON."""
     labelled = pd.read_csv(input_path)
     required = {"description", "debit", "credit", "expected_category"}
@@ -32,7 +36,7 @@ def evaluate(input_path: str | Path, output_path: str | Path) -> dict[str, objec
     report = {
         "dataset": str(input_path),
         "rows": len(labelled),
-        "note": "Small manually labelled regression sample; it is not a production-performance claim.",
+        "note": dataset_label,
         "macro_precision": sum(float(row["precision"]) for row in rows) / len(rows),
         "macro_recall": sum(float(row["recall"]) for row in rows) / len(rows),
         "macro_f1": sum(float(row["f1"]) for row in rows) / len(rows),
@@ -52,5 +56,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default="data/evaluation/labelled_transactions.csv")
     parser.add_argument("--output", default="reports/category_rule_evaluation.json")
+    parser.add_argument(
+        "--dataset-label",
+        default="Small manually labelled regression sample; it is not a production-performance claim.",
+    )
     arguments = parser.parse_args()
-    print(json.dumps(evaluate(arguments.input, arguments.output), indent=2))
+    print(json.dumps(evaluate(arguments.input, arguments.output, arguments.dataset_label), indent=2))

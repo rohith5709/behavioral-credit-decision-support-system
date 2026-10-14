@@ -18,12 +18,23 @@ from src.config import (
     MODEL_PATH,
 )
 from src.decision.engine import recommend
+from src.decision.affordability import POLICY
 from src.documents.statement_csv import parse_statement_csv, read_statement_preview, suggest_column_mapping
 from src.features.behavioral import (
+    apply_bulk_category_override,
+    build_repeated_merchant_groups,
     build_category_summary,
     build_monthly_statement_summary,
     build_statement_features,
+    CATEGORY_OPTIONS,
+    annotate_income_evidence,
     categorise_statement_transactions,
+)
+from src.reporting.case_summary import (
+    build_case_summary_rows,
+    build_decision_record,
+    case_status,
+    extract_review_flags,
 )
 
 st.set_page_config(page_title="Credit Decision Support", page_icon="💳", layout="wide")
@@ -62,7 +73,7 @@ def load_metrics(path: Path, modified_at_ns: int) -> dict[str, float]:
 
 
 tab_summary, tab_upload, tab_profile, tab_portfolio, tab_validation, tab_decision = st.tabs([
-    "1. Case summary", "2. Upload statement", "3. Behaviour profile", "4. Synthetic portfolio", "5. Model validation", "6. Officer decision"
+    "1. Case summary", "2. Upload statement", "3. Behaviour profile", "4. Illustrative synthetic data", "5. ML benchmark (separate)", "6. Officer decision"
 ])
 
 if "statement" not in st.session_state:
@@ -77,6 +88,7 @@ if "statement" not in st.session_state:
 def apply_statement(statement: pd.DataFrame, quality_report) -> None:
     """Refresh all derived state whenever mapping or officer category edits change."""
     statement = categorise_statement_transactions(statement) if "category" not in statement else statement
+    statement = annotate_income_evidence(statement)
     st.session_state.statement = statement
     st.session_state.quality_report = quality_report
     st.session_state.features = build_statement_features(statement, monthly_emi=declared_emi, requested_amount=requested_amount, proposed_emi=proposed_emi)
@@ -85,14 +97,24 @@ def apply_statement(statement: pd.DataFrame, quality_report) -> None:
 
 
 def category_override_records(statement: pd.DataFrame | None) -> list[dict[str, object]]:
-    """Return an auditable, JSON-safe list of officer category changes."""
+    """Return a JSON-safe list of officer category changes for this prototype case."""
     required = {"category_review_status", "category_reviewer", "category_override_rationale"}
     if statement is None or not required.issubset(statement.columns):
         return []
-    fields = ["date", "description", "original_category", "category", "category_reviewer", "category_override_rationale"]
+    fields = [
+        "date", "description", "original_category", "category", "category_confidence",
+        "category_reviewer", "category_override_rationale", "category_override_timestamp_utc",
+    ]
     return statement.loc[
-        statement["category_review_status"].eq("Officer override"), fields
+        statement["category_review_status"].astype(str).str.startswith("Officer"), fields
     ].to_dict(orient="records")
+
+
+def format_percent(value: object, signed: bool = False) -> str:
+    """Show unavailable evidence explicitly instead of formatting it as zero."""
+    if value is None or pd.isna(value):
+        return "Not available"
+    return f"{float(value):{'+.1%' if signed else '.1%'}}"
 
 
 with tab_summary:
@@ -102,6 +124,7 @@ with tab_summary:
     else:
         decision = recommend(None, st.session_state.features, quality_report=st.session_state.quality_report)
         quality = st.session_state.quality_report
+        visual_status, status_message = case_status(decision.recommendation)
         with st.container(horizontal=True):
             st.metric("Data quality", f"{quality.score:.0%}", help="Completeness and consistency of the uploaded statement.", border=True)
             st.metric("Affordability score", f"{decision.affordability_score}/100", help="Transparent rule-based statement assessment.", border=True)
@@ -110,10 +133,32 @@ with tab_summary:
             st.metric("Before new loan surplus", f"₹{st.session_state.features['monthly_surplus']:,.0f}", border=True)
             st.metric("Estimated new EMI", f"₹{proposed_emi:,.0f}", border=True)
             st.metric("After new loan surplus", f"₹{st.session_state.features['post_loan_monthly_surplus']:,.0f}", border=True)
-        status = "🟢" if decision.recommendation == "Approve recommendation" else "🟠" if decision.recommendation == "Manual review" else "🔴"
-        st.write(f"{status} **{decision.recommendation}**")
-        for reason in decision.reasons:
-            st.write(f"- {reason}")
+        st.subheader(f"{visual_status} status: {decision.recommendation}")
+        st.caption(status_message)
+        review_flags = extract_review_flags(decision.reasons)
+        with st.container(border=True):
+            st.subheader("Officer review checklist")
+            if review_flags:
+                for flag in review_flags:
+                    st.write(f"- {flag}")
+            else:
+                st.write("- No mandatory evidence safeguard is currently triggered. Officer review remains required.")
+        with st.expander("Case-summary evidence table", expanded=True):
+            case_summary = build_case_summary_rows(
+                st.session_state.features, quality, decision, requested_amount, proposed_emi, applicant_id
+            )
+            st.dataframe(case_summary, hide_index=True)
+            st.download_button(
+                "Download case summary CSV", case_summary.to_csv(index=False),
+                "case_summary.csv", "text/csv",
+            )
+        with st.expander("All system reasons"):
+            for reason in decision.reasons:
+                st.write(f"- {reason}")
+        st.warning(
+            "Evidence boundary: this is a transparent statement-based affordability assessment, not an automated lending decision. "
+            "It assesses one uploaded account only and cannot verify document authenticity, employment, household costs, or finances held elsewhere."
+        )
 
 with tab_upload:
     st.subheader("CSV bank statement")
@@ -141,7 +186,7 @@ with tab_upload:
     if uploaded and st.button("Analyse statement", type="primary"):
         try:
             statement, quality_report = parse_statement_csv(BytesIO(uploaded.getvalue()), column_mapping=mapping, opening_balance=opening_balance if opening_balance else None)
-            statement = categorise_statement_transactions(statement)
+            statement = annotate_income_evidence(statement)
             apply_statement(statement, quality_report)
             st.success(f"Parsed {len(statement)} transactions. Data-quality score: {quality_report.score:.0%}")
         except (ValueError, pd.errors.ParserError) as error:
@@ -159,22 +204,64 @@ with tab_upload:
             for warning in quality_report.warnings:
                 st.warning(warning)
         st.subheader("Categorised transactions")
-        st.caption("Review and override uncertain categories before using the summary. Overrides are local to this case.")
+        st.caption("Review uncertain categories before using the summary. An override preserves the initial category, reviewer, rationale, and UTC timestamp in this prototype case record.")
         editable = st.session_state.statement.copy()
         editable["officer_category"] = editable["category"]
         if "category_override_rationale" not in editable:
             editable["category_override_rationale"] = ""
         editable["category_reviewer"] = officer_name or "Not supplied"
-        edited = st.data_editor(editable, key="category_review", hide_index=True, disabled=[column for column in editable.columns if column not in {"officer_category", "category_override_rationale"}], column_config={"officer_category": st.column_config.SelectboxColumn("Officer category", options=["Salary/income", "Rent", "EMI/loan repayment", "Utilities", "Groceries", "Transport/fuel", "Healthcare", "Shopping/discretionary", "Cash withdrawal", "Other", "Income/other"] )})
+        edited = st.data_editor(editable, key="category_review", hide_index=True, disabled=[column for column in editable.columns if column not in {"officer_category", "category_override_rationale"}], column_config={"officer_category": st.column_config.SelectboxColumn("Officer category", options=list(CATEGORY_OPTIONS))})
         if st.button("Apply category overrides"):
-            edited["original_category"] = edited["category"]
+            if "original_category" not in edited:
+                edited["original_category"] = edited["category"]
+            else:
+                edited["original_category"] = edited["original_category"].fillna(edited["category"])
             changed = edited["officer_category"] != edited["category"]
             edited.loc[changed, "category"] = edited.loc[changed, "officer_category"]
             edited.loc[changed, "category_review_status"] = "Officer override"
             edited.loc[changed, "category_confidence"] = 1.0
             edited.loc[changed, "category_reviewer"] = officer_name or "Not supplied"
+            edited.loc[changed, "category_override_timestamp_utc"] = datetime.now(timezone.utc).isoformat()
             apply_statement(edited.drop(columns=["officer_category"]), st.session_state.quality_report)
             st.success("Category overrides applied and behavioural indicators refreshed.")
+        with st.expander("Bulk recategorise a repeated merchant"):
+            st.caption(
+                "This applies one officer-reviewed category to every transaction with the same normalised narration. "
+                "Review the example and transaction count before applying it."
+            )
+            merchant_groups = build_repeated_merchant_groups(st.session_state.statement)
+            if merchant_groups.empty:
+                st.info("No repeated merchant narrations are available for bulk review.")
+            else:
+                merchant_options = merchant_groups["merchant_key"].tolist()
+                selected_merchant = st.selectbox(
+                    "Repeated merchant narration", merchant_options, key="bulk_merchant_key",
+                    format_func=lambda key: (
+                        f"{merchant_groups.loc[merchant_groups['merchant_key'].eq(key), 'example_description'].iloc[0]} "
+                        f"({merchant_groups.loc[merchant_groups['merchant_key'].eq(key), 'transactions'].iloc[0]} transactions)"
+                    ),
+                )
+                selected_group = merchant_groups.loc[merchant_groups["merchant_key"].eq(selected_merchant)].iloc[0]
+                st.caption(f"Current categories: {selected_group['current_categories']}")
+                bulk_category = st.selectbox("Bulk officer category", list(CATEGORY_OPTIONS), key="bulk_category")
+                bulk_rationale = st.text_input(
+                    "Bulk override rationale", key="bulk_category_rationale",
+                    placeholder="Why should all matching narrations use this category?",
+                )
+                if st.button("Apply bulk category override"):
+                    try:
+                        bulk_updated, changed_count = apply_bulk_category_override(
+                            st.session_state.statement,
+                            selected_merchant,
+                            bulk_category,
+                            officer_name or "Not supplied",
+                            bulk_rationale,
+                            datetime.now(timezone.utc).isoformat(),
+                        )
+                        apply_statement(bulk_updated, st.session_state.quality_report)
+                        st.success(f"Applied the reviewed category to {changed_count} transaction(s).")
+                    except ValueError as error:
+                        st.error(str(error))
         export_columns = st.columns(4)
         export_columns[0].download_button("Download cleaned transactions CSV", st.session_state.statement.to_csv(index=False), "cleaned_transactions.csv", "text/csv")
         export_columns[1].download_button("Download categorised transactions CSV", st.session_state.statement.to_csv(index=False), "categorised_transactions.csv", "text/csv")
@@ -189,14 +276,30 @@ with tab_upload:
         category_evaluation_path = Path("reports/category_rule_evaluation.json")
         if category_evaluation_path.exists():
             category_evaluation = json.loads(category_evaluation_path.read_text(encoding="utf-8"))
-            with st.expander("Category-rule evaluation (labelled regression sample)"):
-                st.caption(category_evaluation["note"])
+            with st.expander("Category-rule regression fixture (not production validation)"):
+                st.caption(
+                    f"{category_evaluation['note']} The displayed metrics are regression-fixture results, "
+                    "not a claim of real-world categorisation accuracy."
+                )
                 metrics = st.columns(3)
                 metrics[0].metric("Macro precision", f"{category_evaluation['macro_precision']:.1%}")
                 metrics[1].metric("Macro recall", f"{category_evaluation['macro_recall']:.1%}")
                 metrics[2].metric("Macro F1", f"{category_evaluation['macro_f1']:.1%}")
                 st.dataframe(pd.DataFrame(category_evaluation["per_category"]), hide_index=True)
                 st.dataframe(pd.DataFrame(category_evaluation["confusion_matrix"]).T)
+        category_coverage_path = Path("reports/heldout_category_rule_evaluation.json")
+        if category_coverage_path.exists():
+            category_coverage = json.loads(category_coverage_path.read_text(encoding="utf-8"))
+            with st.expander("Category-rule coverage fixture (not production validation)"):
+                st.warning(
+                    "This small curated sample checks rule coverage only. Its metrics are not real-statement "
+                    "or production-performance validation."
+                )
+                metrics = st.columns(3)
+                metrics[0].metric("Macro precision", f"{category_coverage['macro_precision']:.1%}")
+                metrics[1].metric("Macro recall", f"{category_coverage['macro_recall']:.1%}")
+                metrics[2].metric("Macro F1", f"{category_coverage['macro_f1']:.1%}")
+                st.dataframe(pd.DataFrame(category_coverage["per_category"]), hide_index=True)
 
 with tab_profile:
     st.subheader("Behavioural and affordability indicators")
@@ -206,15 +309,16 @@ with tab_profile:
         features = st.session_state.features
         with st.container(horizontal=True):
             st.metric("Average monthly income", f"₹{features['average_monthly_income']:,.0f}", border=True)
+            st.metric("Other statement credits", f"₹{features['other_statement_credits']:,.0f}", help="Credits excluded from recurring-income affordability calculations.", border=True)
             st.metric("Average monthly expense", f"₹{features['average_monthly_expense']:,.0f}", border=True)
-            st.metric("Monthly surplus", f"₹{features['monthly_surplus']:,.0f}", border=True)
+            st.metric("Monthly surplus", f"₹{features['monthly_surplus']:,.0f}", help="Based on recognised recurring income, not every statement credit.", border=True)
         with st.container(horizontal=True):
             st.metric("Savings ratio", f"{features['savings_ratio']:.1%}", border=True)
             st.metric("EMI-to-income ratio", f"{features['emi_to_income_ratio']:.1%}", border=True)
             st.metric("Income variation", f"{features['income_variation_ratio']:.1%}", border=True)
         with st.container(horizontal=True):
-            st.metric("Income trend", f"{features['income_trend_ratio']:+.1%}", border=True)
-            st.metric("Savings trend", f"{features['savings_trend_ratio']:+.1%}", border=True)
+            st.metric("Income trend", format_percent(features['income_trend_ratio'], signed=True), help="Shown only with at least three months and no partial boundary month.", border=True)
+            st.metric("Savings trend", format_percent(features['savings_trend_ratio'], signed=True), help="Shown only with at least three months and no partial boundary month.", border=True)
             st.metric("Expense variation", f"{features['expense_variation_ratio']:.1%}", border=True)
         with st.container(horizontal=True):
             st.metric("Salary frequency", str(features["salary_frequency"]).title(), help="Detected frequency of rule-labelled salary credits.", border=True)
@@ -222,7 +326,10 @@ with tab_profile:
             emi_after_loan = f"{features['proposed_emi_to_income_ratio']:.1%}" if features["average_monthly_income"] else "Not available"
             st.metric("Emergency buffer", emergency_buffer, help="Average closing balance divided by average monthly expense. Not available without balance history.", border=True)
             st.metric("After new loan EMI burden", emi_after_loan, help="Existing detected/declared EMI plus estimated new EMI divided by income.", border=True)
-        st.caption("Lower income variation and a positive savings ratio generally indicate greater affordability stability.")
+            st.metric("EMI evidence", "Check required" if features["emi_difference_amount"] >= 1_000 and features["emi_discrepancy_ratio"] > 0.20 else "No material mismatch", help="Compares declared EMI with detected EMI-payment occurrence; it cannot verify payment timeliness.", border=True)
+        if features["partial_boundary_month"]:
+            st.warning("The first or last statement month appears partial. Trend metrics are withheld to avoid over-interpreting incomplete months.")
+        st.caption("Income uses recognised recurring income evidence. Other credits are displayed separately and are not assumed to be income.")
 
         monthly_summary = st.session_state.monthly_summary
         category_summary = st.session_state.category_summary
@@ -262,7 +369,7 @@ with tab_profile:
                         "Post-loan monthly surplus",
                     ],
                     "Value": [
-                        f"{features['salary_income_share']:.1%}",
+                        format_percent(features['salary_income_share']),
                         f"{features['essential_expense_ratio']:.1%}",
                         f"{features['discretionary_expense_ratio']:.1%}",
                         f"{features['utility_payment_regularity']:.1%}",
@@ -314,20 +421,26 @@ with tab_validation:
         st.info("Train the Home Credit model to display its held-out evaluation metrics.")
     else:
         metrics = load_metrics(HOME_CREDIT_METRICS_PATH, HOME_CREDIT_METRICS_PATH.stat().st_mtime_ns)
+        final_test = metrics.get("final_test_metrics", metrics)
+        protocol = metrics.get("evaluation_protocol", {})
+        display_recall = final_test.get("recall", final_test.get("recall_at_0_50", 0.0))
+        display_precision = final_test.get("precision", final_test.get("precision_at_0_50", 0.0))
         metric_columns = st.columns(3, border=True)
-        metric_columns[0].metric("ROC-AUC", f"{metrics['roc_auc']:.3f}")
-        metric_columns[1].metric("PR-AUC", f"{metrics['pr_auc']:.3f}")
+        metric_columns[0].metric("Final-test ROC-AUC", f"{final_test['roc_auc']:.3f}")
+        metric_columns[1].metric("Final-test PR-AUC", f"{final_test['pr_auc']:.3f}")
         metric_columns[2].metric("Features", f"{metrics['feature_count']}")
         metric_columns = st.columns(2, border=True)
-        metric_columns[0].metric("Default recall at 0.50", f"{metrics['recall_at_0_50']:.1%}")
-        metric_columns[1].metric("Default precision at 0.50", f"{metrics['precision_at_0_50']:.1%}")
-        if "brier_score" in metrics:
-            st.caption(
-                f"Selected model: {metrics['model_name']}. Brier score: {metrics['brier_score']:.3f} "
-                "(lower indicates better probability accuracy)."
-            )
+        metric_columns[0].metric(f"Default recall at {final_test.get('threshold', 0.50):.2f}", f"{display_recall:.1%}")
+        metric_columns[1].metric(f"Default precision at {final_test.get('threshold', 0.50):.2f}", f"{display_precision:.1%}")
         st.caption(
-            f"Evaluated on {metrics['test_rows']:,} held-out applicants. "
+            f"Selected model: {metrics['model_name']}. Final-test Brier score: {final_test['brier_score']:.3f} "
+            "(lower indicates better probability accuracy)."
+        )
+        st.caption(
+            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
+            f"Final test set: {protocol.get('test_rows', final_test.get('test_rows', 'Not available')):,} held-out applicants. "
+            "Model, calibration, and threshold were selected on separate training/validation data. "
+            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
             "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
         )
         if HOME_CREDIT_COMPARISON_PATH.exists():
@@ -338,7 +451,7 @@ with tab_validation:
             with st.container(border=True):
                 st.subheader("Candidate model benchmark")
                 st.caption(
-                    "All candidates used the same held-out applicant set. Selection order: "
+                    "All candidates used the same validation applicants. Selection order: "
                     f"{comparison['selection_metric']}."
                 )
                 st.bar_chart(benchmark, x="model", y=["roc_auc", "pr_auc"])
@@ -347,12 +460,12 @@ with tab_validation:
             threshold_report = load_metrics(
                 HOME_CREDIT_THRESHOLD_PATH, HOME_CREDIT_THRESHOLD_PATH.stat().st_mtime_ns
             )
-            thresholds = pd.DataFrame(threshold_report["rows"])
+            thresholds = pd.DataFrame(threshold_report.get("final_test_rows", threshold_report.get("rows", [])))
             with st.container(border=True):
                 st.subheader("Selected-model threshold analysis")
                 st.caption(
-                    "Lower thresholds flag more applicants and usually increase default recall; "
-                    "the threshold is a policy choice, not an automatic lending rule."
+                    f"Threshold was selected on validation data using this policy: {threshold_report.get('risk_policy', 'Not available')} "
+                    "Final-test values are descriptive only and do not create an automatic lending rule."
                 )
                 st.line_chart(thresholds, x="threshold", y=["recall", "precision", "flagged_applicant_rate"])
                 st.dataframe(thresholds, hide_index=True)
@@ -360,13 +473,14 @@ with tab_validation:
             calibration = load_metrics(
                 HOME_CREDIT_CALIBRATION_PATH, HOME_CREDIT_CALIBRATION_PATH.stat().st_mtime_ns
             )
-            reliability = pd.DataFrame(calibration["reliability"])
+            final_calibration = calibration.get("final_test", calibration)
+            reliability = pd.DataFrame(final_calibration["reliability"])
             with st.container(border=True):
                 st.subheader("Probability calibration")
                 st.caption(
-                    f"{calibration['method']}. Lower Brier score is better: "
-                    f"{calibration['uncalibrated_brier_score']:.3f} before and "
-                    f"{calibration['calibrated_brier_score']:.3f} after calibration."
+                    f"Selected calibration: {calibration.get('selected_method', calibration.get('method', 'Not available'))}. "
+                    f"Final-test Brier score: {final_calibration.get('brier_score', calibration.get('calibrated_brier_score')):.3f}. "
+                    "Calibration method was selected on validation data."
                 )
                 st.line_chart(reliability, x="mean_predicted_risk", y="observed_default_rate")
                 st.dataframe(reliability, hide_index=True)
@@ -378,7 +492,7 @@ with tab_validation:
             st.caption("Gain importance shows which credit-history and repayment features contributed most across the model. It is a global explanation, not an individual lending decision explanation.")
 
 with tab_decision:
-    st.subheader("Recommendation and officer review")
+    st.subheader("Indicative assessment and officer review")
     if not consent:
         st.warning("Confirm applicant consent before recording a prototype recommendation.")
     decision = recommend(
@@ -400,18 +514,34 @@ with tab_decision:
             for component, points in (decision.affordability_components or {}).items()
         ])
         st.dataframe(component_table, hide_index=True)
+        with st.expander("Active policy and safeguards"):
+            st.caption(POLICY["evidence_status"])
+            st.dataframe(
+                pd.DataFrame([
+                    {"Component": label.replace("_", " ").title(), "Rationale": rationale}
+                    for label, rationale in POLICY["component_rationale"].items()
+                ]),
+                hide_index=True,
+            )
+            st.caption(
+                "Safeguards override the numerical score when evidence is incomplete or contradictory. "
+                "See docs/affordability_policy.md for the complete policy definition."
+            )
     for reason in decision.reasons:
         st.write(f"- {reason}")
-    st.info("The Home Credit model remains a separate validated evidence source. It is not applied to raw uploaded statements with incompatible fields.")
+    st.info(
+        "The Home Credit model is a separate benchmark evaluated on another dataset. "
+        "It is not applied to raw uploaded statements with incompatible fields."
+    )
 
     st.subheader("Officer final action")
     override = st.selectbox("Officer final action", ["Pending review", "Approve", "Refer for more documents", "Decline"])
     rationale = st.text_area("Officer rationale", placeholder="Record the final decision and supporting evidence.")
     expected_action = {
-        "Approve recommendation": "Approve",
+        "Meets indicative affordability criteria": "Approve",
         "Manual review": "Refer for more documents",
         "Refer for additional documents": "Refer for more documents",
-        "Decline recommendation": "Decline",
+        "Does not meet indicative affordability criteria": "Decline",
     }.get(decision.recommendation)
     is_override = override not in {"Pending review", expected_action}
     if is_override and not rationale.strip():
@@ -433,11 +563,20 @@ with tab_decision:
             "Rule version": decision.rule_version or "Not available",
             "Home Credit model": model_version,
         })
+        if decision.affordability_score is not None:
+            summary_rows = build_case_summary_rows(
+                st.session_state.features or {}, st.session_state.quality_report, decision,
+                requested_amount, proposed_emi, applicant_id,
+            )
+            st.download_button(
+                "Download decision summary CSV", summary_rows.to_csv(index=False),
+                "decision_summary.csv", "text/csv",
+            )
     can_create_record = consent and override != "Pending review" and (not is_override or bool(rationale.strip()))
     if not consent:
         st.info("Confirm applicant consent and choose an officer action to create a decision record.")
     if st.button("Create decision record", disabled=not can_create_record):
-        record = {
+        base_record = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "applicant_id": applicant_id or None,
             "requested_amount": requested_amount,
@@ -459,4 +598,5 @@ with tab_decision:
             "home_credit_model_version": model_version,
             "model_available": Path(MODEL_PATH).exists(),
         }
+        record = build_decision_record(base_record, decision, st.session_state.quality_report)
         st.download_button("Download decision record", data=pd.Series(record).to_json(indent=2), file_name="decision_record.json", mime="application/json")

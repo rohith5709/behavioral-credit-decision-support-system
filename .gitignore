@@ -41,6 +41,10 @@ reports/*
 !reports/home_credit_metrics.json
 !reports/home_credit_model_comparison.json
 !reports/home_credit_threshold_analysis.json
+!reports/home_credit_model_card.json
+!reports/home_credit_training_config.json
+!reports/affordability_policy_evaluation.json
+!reports/heldout_category_rule_evaluation.json
 !reports/uci_metrics.json
 
 # Editor and operating-system files

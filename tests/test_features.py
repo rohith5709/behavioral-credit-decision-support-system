@@ -2,12 +2,47 @@ import pandas as pd
 import numpy as np
 
 from src.features.behavioral import (
+    apply_bulk_category_override,
+    build_repeated_merchant_groups,
     add_uci_behavioral_features,
     build_category_summary,
     build_monthly_statement_summary,
     build_statement_features,
     categorise_statement_transactions,
 )
+
+
+def test_bulk_category_override_updates_only_selected_repeated_merchant():
+    transactions = pd.DataFrame({
+        "date": pd.to_datetime(["2026-01-01", "2026-02-01", "2026-02-02"]),
+        "description": ["UPI-AMZN-123", "UPI-AMZN-456", "Rent payment"],
+        "debit": [100.0, 120.0, 10_000.0],
+        "credit": [0.0, 0.0, 0.0],
+    })
+    categorised = categorise_statement_transactions(transactions)
+    groups = build_repeated_merchant_groups(categorised)
+    assert groups["merchant_key"].tolist() == ["upi amzn"]
+
+    updated, changed = apply_bulk_category_override(
+        categorised, "upi amzn", "Groceries", "Officer A", "Merchant confirmed as grocery", "2026-01-01T00:00:00+00:00"
+    )
+
+    assert changed == 2
+    assert updated.loc[:1, "category"].tolist() == ["Groceries", "Groceries"]
+    assert updated.loc[2, "category"] == "Rent"
+    assert updated.loc[:1, "category_review_status"].eq("Officer bulk override").all()
+
+
+def test_bulk_category_override_requires_a_rationale():
+    transactions = pd.DataFrame({
+        "description": ["AMZN 1", "AMZN 2"], "debit": [1.0, 1.0], "credit": [0.0, 0.0]
+    })
+    try:
+        apply_bulk_category_override(transactions, "amzn", "Groceries", "Officer A", "", "2026-01-01T00:00:00+00:00")
+    except ValueError as error:
+        assert "rationale" in str(error).lower()
+    else:
+        raise AssertionError("Expected a rationale validation error")
 from src.models.benchmark_home_credit import evaluate_probabilities, select_best_model, threshold_analysis
 
 
@@ -64,6 +99,63 @@ def test_ambiguous_category_is_marked_for_review_and_loan_features_are_derived()
     features = build_statement_features(transactions, requested_amount=100_000, proposed_emi=5_000)
     assert features["requested_loan_to_annual_income_ratio"] == 100_000 / (50_000 * 12)
     assert features["proposed_emi_to_income_ratio"] == 0.1
+
+
+def test_other_credits_are_not_treated_as_affordability_income():
+    transactions = pd.DataFrame({
+        "date": ["2026-01-01", "2026-01-03", "2026-02-01", "2026-02-03"],
+        "description": ["Salary", "Loan disbursement", "Salary", "Refund from merchant"],
+        "credit": [50_000, 100_000, 50_000, 20_000],
+        "debit": [0, 0, 0, 0],
+    })
+    features = build_statement_features(transactions)
+    assert features["average_monthly_income"] == 50_000
+    assert features["gross_statement_credits"] == 220_000
+    assert features["other_statement_credits"] == 120_000
+
+
+def test_recurring_unlabelled_credits_can_be_income_candidates():
+    transactions = pd.DataFrame({
+        "date": ["2026-01-01", "2026-02-01", "2026-03-01"],
+        "description": ["ACME SERVICES CREDIT", "ACME SERVICES CREDIT", "ACME SERVICES CREDIT"],
+        "credit": [40_000, 40_000, 40_000],
+        "debit": [0, 0, 0],
+    })
+    features = build_statement_features(transactions)
+    assert features["average_monthly_income"] == 40_000
+    assert features["recognised_income_months"] == 3
+
+
+def test_merchant_aliases_and_extended_categories_are_classified():
+    transactions = pd.DataFrame({
+        "date": ["2026-01-01"] * 7,
+        "description": [
+            "AMZN Marketplace", "JIOMART ONLINE", "FASTAG recharge", "LIC PREMIUM",
+            "TUITION FEE", "HDFC CREDIT CARD BILL", "LOAN DISB TO ACCOUNT",
+        ],
+        "credit": [0, 0, 0, 0, 0, 0, 100_000],
+        "debit": [500, 600, 300, 900, 2_000, 3_000, 0],
+    })
+    result = categorise_statement_transactions(transactions)
+    assert result["category"].tolist() == [
+        "Shopping/discretionary", "Groceries", "Transport/fuel", "Insurance",
+        "Education", "Card-bill payment", "Loan disbursement",
+    ]
+
+
+def test_balance_features_use_daily_forward_filled_balance_and_withhold_partial_trends():
+    transactions = pd.DataFrame({
+        "date": ["2026-01-10", "2026-01-11", "2026-02-01", "2026-03-31"],
+        "description": ["Salary", "Rent", "Salary", "Salary"],
+        "credit": [10_000, 0, 10_000, 10_000],
+        "debit": [0, 9_500, 0, 0],
+        "balance": [10_000, 500, 10_500, 20_500],
+    })
+    features = build_statement_features(transactions)
+    assert features["balance_observed_days"] == 81
+    assert features["low_balance_day_count"] == 21
+    assert features["partial_boundary_month"] is True
+    assert features["income_trend_ratio"] is None
 
 
 def test_model_benchmark_metrics_and_selection_are_deterministic():

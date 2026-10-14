@@ -1,14 +1,22 @@
 {
-  "version": "statement-categories-v1",
+  "version": "statement-categories-v2",
   "categories": {
-    "Salary/income": ["salary", "payroll", "wages", "income", "stipend", "pension"],
+    "Salary/income": ["salary", "payroll", "wages", "income", "stipend", "pension", "sal cr", "salary cr"],
     "Rent": ["\\brent\\b", "lease"],
+    "Refund/reversal": ["refund", "reversal", "reversed", "chargeback", "rev\\.?"] ,
+    "Transfer/other inflow": ["\\bupi\\b", "\\bimps\\b", "\\bneft\\b", "\\brtgs\\b", "transfer", "funds received", "beneficiary"],
+    "Cash deposit": ["cash deposit", "cash dep", "cash dep\\.?"] ,
+    "Loan disbursement": ["disburs", "loan credit", "loan proceeds", "loan disb"],
+    "Investment redemption": ["redemption", "mutual fund", "mf payout", "dividend", "sip redemption"],
     "EMI/loan repayment": ["\\bemi\\b", "loan", "instal+ment", "finance"],
-    "Utilities": ["electric", "water", "gas", "broadband", "internet", "mobile", "telephone", "utility", "recharge", "jio", "airtel", "vodafone", "bsnl"],
-    "Groceries": ["grocery", "supermarket", "\\bmart\\b", "vegetable", "milk", "dmart", "bigbasket", "blinkit", "zepto"],
-    "Transport/fuel": ["fuel", "petrol", "diesel", "metro", "uber", "ola", "rapido", "parking", "irctc"],
-    "Healthcare": ["pharmacy", "hospital", "clinic", "medical", "doctor", "apollo"],
-    "Shopping/discretionary": ["restaurant", "cafe", "zomato", "swiggy", "shopping", "amazon", "flipkart", "myntra", "movie", "entertainment"],
-    "Cash withdrawal": ["\\batm\\b", "cash withdrawal", "cash withdraw"]
+    "Groceries": ["grocery", "supermarket", "\\bmart\\b", "vegetable", "milk", "dmart", "bigbasket", "big basket", "blinkit", "zepto", "jiomart"],
+    "Transport/fuel": ["fuel", "petrol", "diesel", "metro", "uber", "ola", "rapido", "parking", "irctc", "fastag"],
+    "Healthcare": ["pharmacy", "hospital", "clinic", "medical", "doctor", "apollo", "medplus", "1mg"],
+    "Education": ["school", "college", "university", "tuition", "course", "udemy", "coursera"],
+    "Insurance": ["insurance", "lic premium", "policy premium", "hdfc ergo", "icici lombard"],
+    "Card-bill payment": ["credit card bill", "card payment", "cc payment"],
+    "Shopping/discretionary": ["restaurant", "cafe", "zomato", "swiggy", "shopping", "amazon", "\\bamzn\\b", "flipkart", "\\bfkrt\\b", "myntra", "movie", "entertainment", "nykaa"],
+    "Utilities": ["electric", "water", "gas", "broadband", "internet", "mobile", "telephone", "utility", "recharge", "\\bjio\\b", "\\bairtel\\b", "\\bvodafone\\b", "vi prepaid", "\\bbsnl\\b", "bescom", "tneb", "mseb"],
+    "Cash withdrawal": ["\\batm\\b", "cash withdrawal", "cash withdraw", "cash wdl"]
   }
 }

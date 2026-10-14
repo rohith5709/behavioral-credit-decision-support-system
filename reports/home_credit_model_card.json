@@ -1,0 +1,122 @@
+{
+  "model_name": "LightGBM (balanced)",
+  "purpose": "Separate Home Credit default-risk benchmark; not for raw uploaded bank statements.",
+  "data": "Home Credit Default Risk historical applicant and credit-history data.",
+  "features": [
+    "FLAG_OWN_CAR",
+    "FLAG_OWN_REALTY",
+    "AMT_INCOME_TOTAL",
+    "AMT_CREDIT",
+    "AMT_ANNUITY",
+    "AMT_GOODS_PRICE",
+    "DAYS_BIRTH",
+    "DAYS_EMPLOYED",
+    "DAYS_REGISTRATION",
+    "DAYS_ID_PUBLISH",
+    "CNT_FAM_MEMBERS",
+    "REGION_RATING_CLIENT",
+    "REGION_RATING_CLIENT_W_CITY",
+    "HOUR_APPR_PROCESS_START",
+    "EXT_SOURCE_1",
+    "EXT_SOURCE_2",
+    "EXT_SOURCE_3",
+    "DAYS_LAST_PHONE_CHANGE",
+    "app_credit_to_income",
+    "app_annuity_to_income",
+    "bureau_record_count",
+    "bureau_DAYS_CREDIT",
+    "bureau_AMT_CREDIT_SUM",
+    "bureau_AMT_CREDIT_SUM_DEBT",
+    "bureau_CREDIT_DAY_OVERDUE",
+    "bureau_CNT_CREDIT_PROLONG",
+    "bureau_debt_ratio_component",
+    "bureau_balance_status_count",
+    "bureau_balance_late_status_count",
+    "bureau_balance_default_status_count",
+    "bureau_balance_bureau_balance_late_ratio",
+    "previous_record_count",
+    "previous_refused_count",
+    "previous_cancelled_count",
+    "previous_AMT_APPLICATION",
+    "previous_AMT_CREDIT",
+    "previous_AMT_ANNUITY",
+    "previous_DAYS_DECISION",
+    "previous_application_credit_gap",
+    "pos_record_count",
+    "pos_MONTHS_BALANCE",
+    "pos_CNT_INSTALMENT_FUTURE",
+    "pos_SK_DPD",
+    "pos_SK_DPD_DEF",
+    "pos_late_count",
+    "pos_default_late_count",
+    "card_record_count",
+    "card_MONTHS_BALANCE",
+    "card_AMT_BALANCE",
+    "card_AMT_CREDIT_LIMIT_ACTUAL",
+    "card_AMT_PAYMENT_CURRENT",
+    "card_SK_DPD",
+    "card_SK_DPD_DEF",
+    "card_late_count",
+    "card_utilisation",
+    "installment_record_count",
+    "installment_AMT_INSTALMENT",
+    "installment_AMT_PAYMENT",
+    "installment_payment_gap",
+    "installment_days_late",
+    "installment_late_count"
+  ],
+  "training_configuration": {
+    "random_seed": 42,
+    "candidate_training_cap": 50000,
+    "package_versions": {
+      "python": "3.12.14",
+      "numpy": "2.5.2",
+      "pandas": "2.3.3",
+      "scikit_learn": "1.9.0",
+      "lightgbm": "4.7.0",
+      "xgboost": "2.1.4"
+    }
+  },
+  "evaluation": {
+    "model_name": "LightGBM (balanced)",
+    "dataset": "Home Credit Default Risk",
+    "evaluation_protocol": {
+      "strategy": "Stratified train/validation/untouched-test split",
+      "random_seed": 42,
+      "train_rows": 196806,
+      "validation_rows": 49202,
+      "test_rows": 61503,
+      "train_fraction": 0.64,
+      "validation_fraction": 0.16,
+      "test_fraction": 0.2,
+      "note": "Model, calibration, and threshold choices were made without accessing final test labels."
+    },
+    "selection_metric": "Validation PR-AUC, then validation ROC-AUC, then lower validation Brier score",
+    "calibration_method": "Platt scaling",
+    "final_test_metrics": {
+      "roc_auc": 0.7737,
+      "pr_auc": 0.2664,
+      "brier_score": 0.0667,
+      "recall": 0.3333,
+      "precision": 0.3053,
+      "f1": 0.3187,
+      "threshold": 0.2,
+      "confidence_intervals": {
+        "roc_auc": [
+          0.7668,
+          0.7811
+        ],
+        "pr_auc": [
+          0.2553,
+          0.2785
+        ]
+      }
+    },
+    "feature_count": 61
+  },
+  "limitations": [
+    "Dataset/application context may not match intended deployment context.",
+    "No individual applicant scoring is shown in the statement dashboard.",
+    "Threshold is an officer-review alert policy, not an automated decision rule."
+  ]
+}

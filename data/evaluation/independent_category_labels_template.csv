@@ -1,0 +1,2 @@
+source_format,source_case_id,masked_description,debit,credit,expected_category,reviewer_id,review_date,split,notes
+bank_export_type,case_001,MERCHANT DESCRIPTION REDACTED,0,0,Other,reviewer_001,YYYY-MM-DD,development,Replace this illustrative row with an anonymised transaction.

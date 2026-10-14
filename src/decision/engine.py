@@ -32,7 +32,7 @@ def recommend(
             evidence_gaps = (
                 "Fewer than three months",
                 "Statement data quality",
-                "No salary/income",
+                "No recognised recurring income",
                 "Too many transaction categories",
             )
             if any(reason.startswith(evidence_gaps) for reason in assessment.mandatory_review_reasons):
@@ -43,10 +43,10 @@ def recommend(
                 recommendation = "Manual review"
         elif assessment.score >= POLICY["decision_bands"]["approve_at"]:
             reasons.append(f"Affordability score meets the {POLICY['decision_bands']['approve_at']}-point recommendation threshold.")
-            recommendation = "Approve recommendation"
+            recommendation = "Meets indicative affordability criteria"
         elif assessment.score < POLICY["decision_bands"]["manual_review_at"]:
             reasons.append(f"Affordability score is below the {POLICY['decision_bands']['manual_review_at']}-point threshold.")
-            recommendation = "Decline recommendation"
+            recommendation = "Does not meet indicative affordability criteria"
         else:
             reasons.append(
                 f"Affordability score is in the {POLICY['decision_bands']['manual_review_at']}–"
@@ -69,10 +69,10 @@ def recommend(
         return Decision("Manual review", reasons, None)
     if model_probability >= HIGH_RISK_THRESHOLD:
         reasons.append("Predicted default risk is in the high-risk band.")
-        return Decision("Decline recommendation", reasons, model_probability)
+        return Decision("Does not meet indicative affordability criteria", reasons, model_probability)
     if model_probability >= LOW_RISK_THRESHOLD or reasons:
         reasons.append("Predicted default risk or affordability indicators require an officer review.")
         return Decision("Manual review", reasons, model_probability)
 
     reasons.append("Predicted risk is low and no affordability rule was triggered.")
-    return Decision("Approve recommendation", reasons, model_probability)
+    return Decision("Meets indicative affordability criteria", reasons, model_probability)

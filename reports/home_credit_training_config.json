@@ -1,0 +1,22 @@
+{
+  "split": {
+    "strategy": "Stratified train/validation/untouched-test split",
+    "random_seed": 42,
+    "train_rows": 196806,
+    "validation_rows": 49202,
+    "test_rows": 61503,
+    "train_fraction": 0.64,
+    "validation_fraction": 0.16,
+    "test_fraction": 0.2,
+    "note": "Model, calibration, and threshold choices were made without accessing final test labels."
+  },
+  "package_versions": {
+    "python": "3.12.14",
+    "numpy": "2.5.2",
+    "pandas": "2.3.3",
+    "scikit_learn": "1.9.0",
+    "lightgbm": "4.7.0",
+    "xgboost": "2.1.4"
+  },
+  "feature_count": 61
+}

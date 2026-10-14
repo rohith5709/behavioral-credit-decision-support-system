@@ -67,3 +67,10 @@ def test_parser_rejects_rows_with_both_debit_and_credit():
     transactions, report = parse_statement_csv(csv)
     assert len(transactions) == 1
     assert report.both_debit_credit_rows == 1
+
+
+def test_parser_warns_when_numeric_dates_are_ambiguous():
+    csv = StringIO("date,description,debit,credit\n03/04/2026,Salary,0,10000\n")
+    _, report = parse_statement_csv(csv)
+    assert report.ambiguous_date_rows == 1
+    assert any("day-first" in warning for warning in report.warnings)

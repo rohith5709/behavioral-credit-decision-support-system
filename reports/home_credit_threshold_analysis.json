@@ -1,30 +1,72 @@
 {
   "selected_model": "LightGBM (balanced)",
-  "dataset_split": "Stratified 80/20 hold-out split, random_state=42",
-  "rows": [
+  "selection_partition": "validation",
+  "risk_policy": "Officer-review alert: prefer the most precise evaluated threshold reaching 50% validation recall; otherwise select the evaluated threshold with highest recall and report that the target was not reached.",
+  "selected_threshold": {
+    "threshold": 0.2,
+    "recall": 0.3185,
+    "precision": 0.2842,
+    "f1": 0.3004,
+    "flagged_applicant_rate": 0.0905
+  },
+  "validation_rows": [
     {
       "threshold": 0.2,
-      "recall": 0.3351,
-      "precision": 0.3067,
-      "flagged_applicant_rate": 0.0882
+      "recall": 0.3185,
+      "precision": 0.2842,
+      "f1": 0.3004,
+      "flagged_applicant_rate": 0.0905
     },
     {
       "threshold": 0.3,
-      "recall": 0.1519,
-      "precision": 0.4161,
-      "flagged_applicant_rate": 0.0295
+      "recall": 0.1327,
+      "precision": 0.3746,
+      "f1": 0.1959,
+      "flagged_applicant_rate": 0.0286
     },
     {
       "threshold": 0.4,
-      "recall": 0.053,
-      "precision": 0.526,
-      "flagged_applicant_rate": 0.0081
+      "recall": 0.0428,
+      "precision": 0.4956,
+      "f1": 0.0788,
+      "flagged_applicant_rate": 0.007
     },
     {
       "threshold": 0.5,
-      "recall": 0.0109,
-      "precision": 0.6207,
-      "flagged_applicant_rate": 0.0014
+      "recall": 0.0091,
+      "precision": 0.6102,
+      "f1": 0.0179,
+      "flagged_applicant_rate": 0.0012
+    }
+  ],
+  "final_test_rows": [
+    {
+      "threshold": 0.2,
+      "recall": 0.3333,
+      "precision": 0.3053,
+      "f1": 0.3187,
+      "flagged_applicant_rate": 0.0881
+    },
+    {
+      "threshold": 0.3,
+      "recall": 0.1492,
+      "precision": 0.4103,
+      "f1": 0.2189,
+      "flagged_applicant_rate": 0.0294
+    },
+    {
+      "threshold": 0.4,
+      "recall": 0.054,
+      "precision": 0.5276,
+      "f1": 0.0979,
+      "flagged_applicant_rate": 0.0083
+    },
+    {
+      "threshold": 0.5,
+      "recall": 0.0097,
+      "precision": 0.6316,
+      "f1": 0.019,
+      "flagged_applicant_rate": 0.0012
     }
   ]
 }

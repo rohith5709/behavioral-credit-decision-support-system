@@ -29,17 +29,27 @@ def _quality_report():
 
 def test_strong_statement_receives_approve_recommendation():
     decision = recommend(None, _features(), quality_report=_quality_report())
-    assert decision.recommendation == "Approve recommendation"
+    assert decision.recommendation == "Meets indicative affordability criteria"
     assert decision.affordability_score >= 75
 
 
 def test_low_score_statement_receives_decline_recommendation():
     decision = recommend(None, _features(savings_ratio=-0.20, emi_to_income_ratio=0.45, salary_consistency_ratio=0.8, expense_variation_ratio=0.8, utility_payment_regularity=0.0), quality_report=_quality_report())
-    assert decision.recommendation == "Decline recommendation"
+    assert decision.recommendation == "Does not meet indicative affordability criteria"
     assert decision.affordability_score < 45
 
 
 def test_missing_salary_requests_additional_documents_even_with_good_other_signals():
     decision = recommend(None, _features(salary_income_months=0.0), quality_report=_quality_report())
     assert decision.recommendation == "Refer for additional documents"
-    assert any("No salary/income" in reason for reason in decision.reasons)
+    assert any("No recognised recurring income" in reason for reason in decision.reasons)
+
+
+def test_material_declared_and_detected_emi_difference_requires_manual_review():
+    decision = recommend(
+        None,
+        _features(emi_difference_amount=5_000, emi_discrepancy_ratio=0.50),
+        quality_report=_quality_report(),
+    )
+    assert decision.recommendation == "Manual review"
+    assert any("Declared EMI" in reason for reason in decision.reasons)

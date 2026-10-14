@@ -1,0 +1,40 @@
+{
+  "version": "statement-compatible-ml-v1",
+  "purpose": "Defines the applicant-level features that may support a future repayment/default model when consented labelled historical data is available.",
+  "target": "loan_default_within_outcome_window",
+  "identifiers": ["applicant_case_id", "application_date"],
+  "required_request_fields": ["requested_amount", "loan_tenure_months", "annual_interest_rate"],
+  "required_evidence_fields": ["observed_statement_months"],
+  "statement_features": [
+    "average_monthly_income",
+    "average_monthly_expense",
+    "savings_ratio",
+    "income_variation_ratio",
+    "expense_variation_ratio",
+    "balance_volatility_ratio",
+    "low_balance_day_count",
+    "cash_withdrawal_share",
+    "effective_monthly_emi",
+    "proposed_emi_to_income_ratio",
+    "emergency_buffer_months",
+    "uncertain_transaction_share",
+    "income_to_requested_amount_ratio",
+    "requested_to_annual_income_ratio",
+    "post_loan_monthly_surplus"
+  ],
+  "excluded_until_reliably_available": [
+    "home_credit_ext_source_features",
+    "bureau_repayment_history",
+    "statement_payment_timeliness",
+    "protected_characteristics",
+    "unverified_identity_or_employment_claims"
+  ],
+  "minimum_data_requirements": {
+    "minimum_labelled_cases": 1000,
+    "minimum_observed_statement_months": 3,
+    "minimum_positive_outcomes": 100,
+    "temporal_validation_required": true,
+    "consent_and_anonymisation_required": true
+  },
+  "note": "This contract does not make the current uploaded-statement prototype an ML scoring system. It only defines compatible future training evidence."
+}

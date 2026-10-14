@@ -1,6 +1,6 @@
 # Behavioral Credit Decision Support System
 
-A human-in-the-loop prototype for analysing financial documents, deriving behavioural indicators, validating a separate default-risk model, and supporting an officer review.
+A human-in-the-loop CSV bank-statement affordability-evidence prototype. It derives transparent transaction indicators, presents a separate default-risk ML benchmark, and supports officer review; it does not make lending decisions.
 
 ## What is included
 
@@ -8,13 +8,16 @@ A human-in-the-loop prototype for analysing financial documents, deriving behavi
 - Behavioural features from six months of bill, payment, and repayment-status history.
 - CSV bank-statement parser with automatic aliases, officer column mapping, signed-amount support, duplicate detection, balance-transition checks, and data-quality checks.
 - Transparent transaction categorisation for salary, rent, EMI, utilities, groceries, transport, healthcare, discretionary spending, cash withdrawals, and other transactions.
+- Recognised recurring income separated from refunds, transfers, loan disbursements, investments, cash deposits, and other statement credits.
+- Daily forward-filled balance evidence, partial-period warnings, declared-versus-detected EMI discrepancy checks, and trend suppression when coverage is inadequate.
 - Monthly income, expense, surplus, category-spend, and month-end balance views derived from the uploaded statement.
 - Affordability indicators for savings, EMI burden, income variation, salary share, essential/discretionary spend, utility regularity, low-balance days, and unusually large transactions.
 - A transparent 0–100 uploaded-statement affordability score with documented rule weights and mandatory-review safeguards.
 - Bank Data Simulator Parquet adapter for synthetic behavioural portfolio data.
-- Transparent decision engine: approve recommendation, manual review, or decline recommendation.
-- Streamlit dashboard with a case summary, transaction/category filters and search, category overrides, CSV exports, and an audit-ready decision record.
-- Home Credit candidate benchmark (logistic regression plus two LightGBM configurations), held-out evaluation, and deterministic model selection; the selected model is intentionally not applied to incompatible raw uploaded statements.
+- Transparent decision engine: meets indicative affordability criteria, manual review, referral for additional documents, or does not meet indicative criteria.
+- Streamlit dashboard with a case summary, transaction/category filters and search, category overrides, CSV exports, and a prototype decision log.
+- Officer-facing case-summary table, traffic-light visual aid, explicit mandatory-review checklist, and downloadable decision summary.
+- Home Credit candidate benchmark (Logistic Regression, Random Forest, XGBoost, and two LightGBM configurations), single held-out-split evaluation, and deterministic model selection; the selected model is intentionally not applied to incompatible raw uploaded statements.
 - Structure ready for the later PDF-OCR and per-applicant model-alignment modules.
 
 ## Quick start
@@ -57,7 +60,7 @@ Training writes:
 - `models/uci_logistic_regression.joblib`
 - `reports/uci_metrics.json`
 
-The Home Credit benchmark additionally writes model-comparison, threshold-analysis, and Platt-scaling calibration reports in `reports/`. Logistic Regression and both LightGBM candidates train on the full training split; the compute-intensive Random Forest and XGBoost baselines train on a deterministic, stratified 50,000-row subset and are evaluated on exactly the same held-out set. Selection uses ROC-AUC, then PR-AUC, then lower Brier score.
+The Home Credit benchmark uses reproducible 64% train, 16% validation, and untouched 20% final-test partitions. Candidate, calibration, and threshold choices are made only on validation data; the test partition is used once for final reporting. It writes comparison, threshold, calibration, training-configuration, and model-card reports in `reports/`. Logistic Regression and both LightGBM candidates train on the complete training partition; compute-intensive Random Forest and XGBoost baselines use a deterministic stratified 50,000-row cap. Candidate selection uses validation PR-AUC, then ROC-AUC, then lower Brier score. This is a single-dataset benchmark; Phase 1 will add repeated/nested validation and further leakage, ablation, and fairness checks.
 
 The dashboard validates required fields, invalid dates, malformed amounts, duplicate rows, balance consistency, and coverage of at least three months. It then assigns visible rule-based categories and derives monthly affordability views. Its transparent statement policy can recommend approval, manual review, referral for additional documents, or decline; a human officer makes the final choice. The Home Credit model is not applied to incompatible raw transaction fields.
 
@@ -78,9 +81,39 @@ python -m src.evaluation.evaluate_categories
 
 Its output, `reports/category_rule_evaluation.json`, is a tiny rules-regression test set—not a claim of real-world categorisation accuracy.
 
+Run a separate curated category-coverage fixture with:
+
+```powershell
+python -m src.evaluation.evaluate_categories --input data/evaluation/heldout_transaction_categories.csv --output reports/heldout_category_rule_evaluation.json --dataset-label "Curated category-coverage fixture; it is not real-statement or production-performance validation."
+```
+
+It includes merchant abbreviations and newer categories such as refunds, transfers, loan disbursements, investments, education, insurance, and card-bill payments. Real anonymised bank-export evaluation remains required before reporting production accuracy.
+
+For the required independent-data protocol and a safe labelling template, see [docs/category_validation_protocol.md](docs/category_validation_protocol.md). The template intentionally contains no real customer data.
+
+Run the affordability-policy truth-table and sensitivity checks with:
+
+```powershell
+python -m src.evaluation.evaluate_affordability_policy
+```
+
+This creates `reports/affordability_policy_evaluation.json`. It verifies the configured rule behaviour and safeguard precedence; it is not outcome-based validation of lending thresholds.
+
+## Evidence boundaries (Phase 7)
+
+- Not every credit is income. The affordability calculation uses rule-labelled salary credits and conservative recurring-income candidates; other credits remain visible but are excluded from affordability income.
+- A recurring-credit candidate is statement evidence, not verified employment or employer income.
+- Declared EMI and detected EMI-payment occurrence are compared. A material difference requires officer review; neither value proves payment timeliness.
+- Trends are withheld when there are fewer than three months or a partial first/last month. Low-balance measures use daily forward-filled closing balances when a balance column is available.
+- This prototype analyses one uploaded account only. It cannot authenticate the source document or observe household costs, other accounts, cash income, dependants, or off-statement liabilities.
+
+## Statement-compatible ML bridge (Phase 12)
+
+The Home Credit benchmark is deliberately separate from uploaded statements. The future compatible-ML feature contract, safe applicant-data template, and data-readiness validator are documented in [docs/statement_ml_bridge.md](docs/statement_ml_bridge.md). No statement-based ML model is trained or used until consented, anonymised historical applicant data with repayment/default outcomes is available.
+
 ## Statement affordability policy
 
-The uploaded-statement assessment uses `statement-affordability-v1` and is separate from the Home Credit model. It awards up to 25 points each for savings ratio and EMI burden, 20 for salary consistency, 15 for expense stability, 10 for utility regularity, and 5 for data quality. A score of 75 or higher produces an approval recommendation; 45–74 produces manual review; below 45 produces a decline recommendation. The system always requires manual review when the statement has fewer than three months, data quality below 80%, no detected salary/income, contradictory balance data, or EMI burden above 50%.
+The uploaded-statement assessment uses `statement-affordability-v1` and is separate from the Home Credit model. It awards up to 25 points each for savings ratio and EMI burden, 20 for salary consistency, 15 for expense stability, 10 for utility regularity, and 5 for data quality. A score of 75 or higher indicates that available statement evidence meets indicative affordability criteria; 45–74 produces manual review; below 45 indicates that available evidence does not meet indicative criteria. The system always requires review or additional evidence when the statement has fewer than three months, data quality below 80%, no recognised recurring income, contradictory balance data, material EMI mismatch, or critical EMI burden.
 
 ## Synthetic behavioural-data integration
 

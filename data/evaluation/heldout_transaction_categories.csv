@@ -1,0 +1,20 @@
+description,debit,credit,expected_category
+ACME SAL CR,0,48000,Salary/income
+Employer payroll credit,0,52000,Salary/income
+AMZN Mktp IN,1799,0,Shopping/discretionary
+FKRT INTERNET RETAIL,2400,0,Shopping/discretionary
+BIG BASKET ONLINE,1250,0,Groceries
+JIOMART ONLINE,860,0,Groceries
+FASTAG recharge,500,0,Transport/fuel
+INDIAN OIL PETROL,2200,0,Transport/fuel
+MEDPLUS pharmacy,750,0,Healthcare
+LIC PREMIUM,1800,0,Insurance
+TUITION FEE PAYMENT,5000,0,Education
+HDFC CREDIT CARD BILL,6500,0,Card-bill payment
+UPI TRANSFER TO FRIEND,1000,0,Transfer/other inflow
+UPI REFUND FROM MERCHANT,0,550,Refund/reversal
+LOAN DISB TO ACCOUNT,0,100000,Loan disbursement
+MF REDEMPTION CREDIT,0,8000,Investment redemption
+CASH DEP BRANCH,0,3000,Cash deposit
+ATM CASH WDL,4000,0,Cash withdrawal
+UNRECOGNISED MERCHANT,600,0,Other
