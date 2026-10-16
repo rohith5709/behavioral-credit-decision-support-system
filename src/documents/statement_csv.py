@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
+import io
 from typing import BinaryIO
+import re
 
 import pandas as pd
 
 CANONICAL_COLUMNS = ("date", "description", "debit", "credit", "balance")
 ALIASES = {
     "date": {"date", "transaction_date", "txn_date", "value_date"},
-    "description": {"description", "narration", "particulars", "remarks", "details"},
-    "debit": {"debit", "withdrawal", "debit_amount", "dr"},
-    "credit": {"credit", "deposit", "credit_amount", "cr"},
+    "description": {"description", "narration", "particulars", "remarks", "details", "transaction_remarks", "txn_remarks"},
+    "debit": {"debit", "withdrawal", "debit_amount", "withdrawal_amount", "withdrawal_amt", "dr"},
+    "credit": {"credit", "deposit", "credit_amount", "deposit_amount", "deposit_amt", "cr"},
     "balance": {"balance", "closing_balance", "running_balance"},
     "amount": {"amount", "transaction_amount", "txn_amount"},
 }
@@ -40,19 +42,62 @@ class StatementQualityReport:
 
 
 def _normalise_name(name: object) -> str:
-    return str(name).strip().lower().replace(" ", "_").replace("-", "_")
+    cleaned = str(name).strip().lower().replace(".", "").replace("-", "_").replace(" ", "_")
+    return re.sub(r"_+", "_", cleaned)
 
 
 def _find_column(columns: list[str], canonical: str) -> str | None:
     return next((column for column in columns if _normalise_name(column) in ALIASES[canonical]), None)
 
 
+def _read_csv_with_bank_tolerances(uploaded_file: BinaryIO | BytesIO | str) -> pd.DataFrame:
+    """Read common bank-export encodings and skip a short non-tabular preamble."""
+    payload = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else None
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    attempts = ("utf-8-sig", "utf-16", "cp1252")
+    last_error: Exception | None = None
+    all_aliases = set().union(*ALIASES.values())
+
+    for encoding in attempts:
+        try:
+            if payload is not None:
+                lines = payload.decode(encoding).splitlines()
+            elif hasattr(uploaded_file, "seek") and hasattr(uploaded_file, "read"):
+                uploaded_file.seek(0)
+                raw_bytes = uploaded_file.read()
+                if isinstance(raw_bytes, str):
+                    lines = raw_bytes.splitlines()
+                else:
+                    lines = raw_bytes.decode(encoding).splitlines()
+            else:
+                lines = []
+
+            if not lines or all(not line.strip() for line in lines):
+                raise pd.errors.EmptyDataError("The uploaded CSV is empty.")
+
+            header_row = 0
+            for idx, line in enumerate(lines[:25]):
+                tokens = [t.strip().strip('"').strip("'") for t in re.split(r",|\t", line)]
+                if sum(_normalise_name(t) in all_aliases for t in tokens if t) >= 2:
+                    header_row = idx
+                    break
+
+            source = io.StringIO("\n".join(lines[header_row:]))
+            return pd.read_csv(source)
+        except (UnicodeError, pd.errors.ParserError, pd.errors.EmptyDataError) as error:
+            last_error = error
+            if payload is None and hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+
+    if isinstance(last_error, pd.errors.EmptyDataError):
+        raise ValueError("The uploaded CSV is empty.") from last_error
+    raise ValueError("The CSV could not be decoded as UTF-8, UTF-16, or Windows-1252.") from last_error
+
+
 def read_statement_preview(uploaded_file: BinaryIO | BytesIO | str) -> pd.DataFrame:
     """Read unmodified CSV data so an officer can review/map columns before parsing."""
-    try:
-        return pd.read_csv(uploaded_file)
-    except pd.errors.EmptyDataError as error:
-        raise ValueError("The uploaded CSV is empty.") from error
+    return _read_csv_with_bank_tolerances(uploaded_file)
 
 
 def suggest_column_mapping(columns: list[str]) -> dict[str, str | None]:
@@ -67,9 +112,29 @@ def _parse_amount(values: pd.Series) -> tuple[pd.Series, int]:
         .str.replace("₹", "", regex=False).str.replace(",", "", regex=False)
         .str.replace(r"^\((.*)\)$", r"-\1", regex=True)
     )
+    debit_marker = cleaned.str.contains(r"\bdr\b|\bdebit\b", case=False, regex=True, na=False)
+    credit_marker = cleaned.str.contains(r"\bcr\b|\bcredit\b", case=False, regex=True, na=False)
+    cleaned = cleaned.str.replace(r"\s*(dr|cr|debit|credit)\s*$", "", case=False, regex=True)
     empty = cleaned.eq("") | cleaned.str.lower().isin({"nan", "none", "null", "-"})
     parsed = pd.to_numeric(cleaned.mask(empty), errors="coerce")
+    parsed = parsed.where(~debit_marker, -parsed.abs()).where(~credit_marker, parsed.abs())
     return parsed.fillna(0.0), int((parsed.isna() & ~empty).sum())
+
+
+def safe_export_csv(frame: pd.DataFrame, mask_pii: bool = True) -> str:
+    """Return a spreadsheet-safe CSV and mask obvious PII-like text in exports.
+
+    This is a display/export safeguard, not a guarantee of anonymisation.
+    """
+    exported = frame.copy()
+    for column in exported.select_dtypes(include="object").columns:
+        values = exported[column].fillna("").astype(str)
+        if mask_pii:
+            values = values.str.replace(r"(?<!\d)\d{8,}(?!\d)", "[masked-number]", regex=True)
+            values = values.str.replace(r"\b[\w.+-]+@[\w.-]+\b", "[masked-upi-or-email]", regex=True)
+            values = values.str.replace(r"(?<!\d)\d{10}(?!\d)", "[masked-phone]", regex=True)
+        exported[column] = values.map(lambda value: f"'{value}" if value.startswith(("=", "+", "-", "@")) else value)
+    return exported.to_csv(index=False)
 
 
 def _quality_score(

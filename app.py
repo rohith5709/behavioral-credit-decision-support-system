@@ -19,7 +19,7 @@ from src.config import (
 )
 from src.decision.engine import recommend
 from src.decision.affordability import POLICY
-from src.documents.statement_csv import parse_statement_csv, read_statement_preview, suggest_column_mapping
+from src.documents.statement_csv import parse_statement_csv, read_statement_preview, safe_export_csv, suggest_column_mapping
 from src.features.behavioral import (
     apply_bulk_category_override,
     build_repeated_merchant_groups,
@@ -149,7 +149,7 @@ with tab_summary:
             )
             st.dataframe(case_summary, hide_index=True)
             st.download_button(
-                "Download case summary CSV", case_summary.to_csv(index=False),
+                "Download case summary CSV", safe_export_csv(case_summary),
                 "case_summary.csv", "text/csv",
             )
         with st.expander("All system reasons"):
@@ -263,13 +263,13 @@ with tab_upload:
                     except ValueError as error:
                         st.error(str(error))
         export_columns = st.columns(4)
-        export_columns[0].download_button("Download cleaned transactions CSV", st.session_state.statement.to_csv(index=False), "cleaned_transactions.csv", "text/csv")
-        export_columns[1].download_button("Download categorised transactions CSV", st.session_state.statement.to_csv(index=False), "categorised_transactions.csv", "text/csv")
-        export_columns[2].download_button("Download behavioural features CSV", pd.DataFrame([st.session_state.features]).to_csv(index=False), "behavioural_features.csv", "text/csv")
+        export_columns[0].download_button("Download cleaned transactions CSV", safe_export_csv(st.session_state.statement), "cleaned_transactions.csv", "text/csv")
+        export_columns[1].download_button("Download categorised transactions CSV", safe_export_csv(st.session_state.statement), "categorised_transactions.csv", "text/csv")
+        export_columns[2].download_button("Download behavioural features CSV", safe_export_csv(pd.DataFrame([st.session_state.features])), "behavioural_features.csv", "text/csv")
         export_decision = recommend(None, st.session_state.features, quality_report=st.session_state.quality_report)
         export_columns[3].download_button(
             "Download affordability breakdown CSV",
-            pd.DataFrame([{"component": label, "points": points} for label, points in (export_decision.affordability_components or {}).items()]).to_csv(index=False),
+            safe_export_csv(pd.DataFrame([{"component": label, "points": points} for label, points in (export_decision.affordability_components or {}).items()])),
             "affordability_score_breakdown.csv",
             "text/csv",
         )
@@ -569,7 +569,7 @@ with tab_decision:
                 requested_amount, proposed_emi, applicant_id,
             )
             st.download_button(
-                "Download decision summary CSV", summary_rows.to_csv(index=False),
+                "Download decision summary CSV", safe_export_csv(summary_rows),
                 "decision_summary.csv", "text/csv",
             )
     can_create_record = consent and override != "Pending review" and (not is_override or bool(rationale.strip()))

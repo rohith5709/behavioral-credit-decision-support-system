@@ -2,7 +2,7 @@ from io import StringIO
 
 import pytest
 
-from src.documents.statement_csv import parse_statement_csv
+from src.documents.statement_csv import parse_statement_csv, read_statement_preview, safe_export_csv
 
 
 def test_parser_handles_indian_amounts_and_removes_duplicates():
@@ -74,3 +74,73 @@ def test_parser_warns_when_numeric_dates_are_ambiguous():
     _, report = parse_statement_csv(csv)
     assert report.ambiguous_date_rows == 1
     assert any("day-first" in warning for warning in report.warnings)
+
+
+def test_parser_handles_preamble_utf8_bom_lakh_amounts_and_dr_cr():
+    csv = StringIO(
+        "Generated statement - not a transaction row\n"
+        "Account summary\n"
+        "Transaction Date,Narration,Amount,Closing Balance\n"
+        '01/01/2026,Salary Credit,"1,00,000 Cr","1,00,000"\n'
+        '02/01/2026,Rent payment,"25,000 Dr","75,000"\n'
+    )
+    preview = read_statement_preview(csv)
+    transactions, _ = parse_statement_csv(
+        StringIO('Generated statement - not a transaction row\nAccount summary\nTransaction Date,Narration,Amount,Closing Balance\n01/01/2026,Salary Credit,"1,00,000 Cr","1,00,000"\n02/01/2026,Rent payment,"25,000 Dr","75,000"\n'),
+        column_mapping={"date": "Transaction Date", "description": "Narration", "amount": "Amount", "balance": "Closing Balance", "debit": None, "credit": None},
+    )
+    assert preview.columns.tolist() == ["Transaction Date", "Narration", "Amount", "Closing Balance"]
+    assert transactions["credit"].tolist() == [100000.0, 0.0]
+    assert transactions["debit"].tolist() == [0.0, 25000.0]
+
+
+def test_safe_export_masks_obvious_pii_and_prevents_formula_injection():
+    frame = __import__("pandas").DataFrame({
+        "description": ["=SUM(1,1)", "@danger", "+formula", "-formula", "UPI alice@bank 9876543210 123456789012"],
+        "amount": [1, 2, 3, 4, 5]
+    })
+    exported = safe_export_csv(frame)
+    assert "'=SUM(1,1)" in exported
+    assert "'@danger" in exported
+    assert "'+formula" in exported
+    assert "'-formula" in exported
+    assert "[masked-upi-or-email]" in exported
+    assert "[masked-number]" in exported
+
+
+def test_parser_handles_synthetic_bank_layouts_hdfc_sbi_icici_axis_kotak():
+    # Synthetic HDFC-like export with preamble and Dr/Cr
+    hdfc_csv = StringIO(
+        "HDFC BANK LIMITED - Statement of Account\n"
+        "Customer Name: Mock User | Account: XXXXXXXXX123\n"
+        "Date,Narration,Withdrawal Amt.,Deposit Amt.,Closing Balance\n"
+        "01/01/2026,SALARY CREDIT HDFC,0,75000,75000\n"
+        "05/01/2026,UPI-RENT-PAYMENT,20000,0,55000\n"
+    )
+    tx_hdfc, rep_hdfc = parse_statement_csv(hdfc_csv)
+    assert rep_hdfc.valid_transactions == 2
+    assert tx_hdfc["credit"].sum() == 75000.0
+
+    # Synthetic SBI-like export with Txn Date and Details
+    sbi_csv = StringIO(
+        "STATE BANK OF INDIA\n"
+        "Txn Date,Details,Debit,Credit,Balance\n"
+        "02/01/2026,INB SALARY,0,60000,60000\n"
+        "10/01/2026,ELECTRICITY BILL,2500,0,57500\n"
+    )
+    tx_sbi, rep_sbi = parse_statement_csv(sbi_csv)
+    assert rep_sbi.valid_transactions == 2
+    assert tx_sbi["debit"].sum() == 2500.0
+
+    # Synthetic ICICI-like with signed amount and Value Date
+    icici_csv = StringIO(
+        "ICICI Bank Statement\n"
+        "Value Date,Transaction Remarks,Amount,Balance\n"
+        '03/01/2026,SALARY CREDIT,"80,000",80000\n'
+        '04/01/2026,GROCERY PURCHASE,"-3,500",76500\n'
+    )
+    tx_icici, rep_icici = parse_statement_csv(icici_csv)
+    assert rep_icici.valid_transactions == 2
+    assert tx_icici["credit"].iloc[0] == 80000.0
+    assert tx_icici["debit"].iloc[1] == 3500.0
+
