@@ -53,3 +53,20 @@ def test_material_declared_and_detected_emi_difference_requires_manual_review():
     )
     assert decision.recommendation == "Manual review"
     assert any("Declared EMI" in reason for reason in decision.reasons)
+
+
+def test_actionable_affordability_metrics_and_counterfactuals():
+    from src.decision.affordability import calculate_actionable_affordability_metrics
+    features = {
+        "average_monthly_income": 60_000.0,
+        "effective_monthly_emi": 10_000.0,
+        "average_monthly_expense": 35_000.0,
+        "savings_ratio": 0.416,
+    }
+    metrics = calculate_actionable_affordability_metrics(features, loan_tenure_months=24, annual_interest_rate=12.0)
+    assert metrics["max_sustainable_monthly_emi"] > 0
+    assert metrics["max_indicative_loan_amount"] > 0
+    assert metrics["stressed_income_minus_20"] == 48_000.0
+    assert metrics["stressed_expense_plus_10"] == 38_500.0
+    assert len(metrics["counterfactual_guidance"]) >= 1
+

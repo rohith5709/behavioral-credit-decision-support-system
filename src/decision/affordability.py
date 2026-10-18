@@ -116,3 +116,58 @@ def assess_affordability(features: dict[str, float], quality_report: StatementQu
     if float(features.get("uncertain_transaction_share", 0.0)) > hard_stops["maximum_uncertain_transaction_share"]:
         mandatory_review_reasons.append("Too many transaction categories require officer review.")
     return AffordabilityAssessment(score, components, reasons, mandatory_review_reasons)
+
+
+def calculate_actionable_affordability_metrics(
+    features: dict[str, float],
+    loan_tenure_months: int = 24,
+    annual_interest_rate: float = 12.0,
+) -> dict[str, float | str | list[str]]:
+    """Compute maximum sustainable EMI, indicative loan amount, stress scenarios, and counterfactuals."""
+    income = max(float(features.get("average_monthly_income", 0.0)), 0.0)
+    existing_emi = max(float(features.get("effective_monthly_emi", 0.0)), 0.0)
+    expenses = max(float(features.get("average_monthly_expense", 0.0)), 0.0)
+    monthly_surplus = max(income - expenses, 0.0)
+
+    # Policy cap: maximum total EMI (existing + new) <= 50% of monthly income
+    max_total_emi_allowed = 0.50 * income
+    max_sustainable_emi = max(min(max_total_emi_allowed - existing_emi, monthly_surplus * 0.70), 0.0)
+
+    # Indicative loan principal from sustainable EMI using standard loan amortisation
+    monthly_rate = (annual_interest_rate / 100.0) / 12.0
+    if monthly_rate > 0 and loan_tenure_months > 0:
+        discount_factor = ((1 + monthly_rate) ** loan_tenure_months - 1) / (monthly_rate * (1 + monthly_rate) ** loan_tenure_months)
+        max_indicative_loan = max_sustainable_emi * discount_factor
+    else:
+        max_indicative_loan = max_sustainable_emi * loan_tenure_months
+
+    # Stress testing scenarios
+    stressed_income = income * 0.80  # Income -20%
+    stressed_expense = expenses * 1.10  # Expense +10%
+    stressed_surplus = stressed_income - stressed_expense
+    stressed_rate = annual_interest_rate + 2.0  # Interest +2%
+    stressed_monthly_rate = (stressed_rate / 100.0) / 12.0
+    stressed_discount = ((1 + stressed_monthly_rate) ** loan_tenure_months - 1) / (stressed_monthly_rate * (1 + stressed_monthly_rate) ** loan_tenure_months)
+    stressed_max_loan = max(min(0.50 * stressed_income - existing_emi, max(stressed_surplus * 0.70, 0.0)), 0.0) * stressed_discount
+
+    # Counterfactual guidance
+    counterfactuals = []
+    savings_ratio = float(features.get("savings_ratio", 0.0))
+    if savings_ratio < 0.20:
+        needed_savings = (0.20 - savings_ratio) * income
+        counterfactuals.append(f"Increasing monthly savings by ₹{needed_savings:,.0f} would advance the savings score to the next band.")
+    if existing_emi / income > 0.35 if income > 0 else False:
+        counterfactuals.append("Clearing or consolidating existing short-term debt to lower EMI burden below 35% would improve eligibility.")
+    if not counterfactuals:
+        counterfactuals.append("Applicant profile currently satisfies indicative affordability benchmarks.")
+
+    return {
+        "max_sustainable_monthly_emi": round(max_sustainable_emi, 2),
+        "max_indicative_loan_amount": round(max_indicative_loan, 2),
+        "stressed_income_minus_20": round(stressed_income, 2),
+        "stressed_expense_plus_10": round(stressed_expense, 2),
+        "stressed_surplus": round(stressed_surplus, 2),
+        "stressed_max_indicative_loan": round(stressed_max_loan, 2),
+        "counterfactual_guidance": counterfactuals,
+    }
+
