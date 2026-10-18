@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.config import (
     HOME_CREDIT_COMPARISON_PATH,
@@ -43,218 +44,324 @@ from src.data.db import init_db, save_case_record, get_case_records, verify_hash
 # Initialize SQLite database for decision records
 init_db()
 
-st.set_page_config(page_title="Credit Decision Support | Sound Risk Intelligence", page_icon="🟢", layout="wide")
+st.set_page_config(page_title="Credit Decision Support | Sound Risk Intelligence", layout="wide")
 
-# Production-grade Spotify Dark Futuristic Aesthetic CSS
+# ── Production Spotify Dark Aesthetic — Full CSS overhaul ────────────────────
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
 
     html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
     /* Core Canvas */
-    .stApp {
-        background-color: #0c0c0c;
-        color: #FFFFFF;
-    }
-
+    .stApp { background-color: #0a0a0a !important; color: #FFFFFF !important; }
     .main .block-container {
-        padding-top: 1.5rem;
+        padding-top: 0 !important;
         padding-bottom: 3rem;
-        max-width: 1380px;
+        max-width: 1400px;
     }
 
-    /* Spotify Futuristic Navigation Header */
-    .spotify-header {
-        background: linear-gradient(135deg, rgba(29, 185, 84, 0.12) 0%, rgba(18, 18, 18, 0.95) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 1.6rem 2rem;
-        margin-bottom: 1.5rem;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0a0a0a; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #1DB954; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0d0d0d 0%, #111 100%) !important;
+        border-right: 1px solid rgba(255,255,255,0.05) !important;
+    }
+    [data-testid="stSidebar"] label {
+        color: #888 !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #fff !important;
+        font-size: 0.9rem !important;
+        font-weight: 700 !important;
+        border-left: 3px solid #1DB954 !important;
+        padding-left: 10px !important;
+        margin: 1.2rem 0 0.5rem !important;
     }
 
-    .spotify-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: rgba(29, 185, 84, 0.15);
-        border: 1px solid rgba(29, 185, 84, 0.4);
-        color: #1DB954;
-        padding: 0.35rem 0.9rem;
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        background: #111;
+        padding: 5px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.06);
+        margin-bottom: 1.2rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 7px !important;
+        color: #666 !important;
+        font-weight: 600 !important;
+        font-size: 0.78rem !important;
+        padding: 7px 14px !important;
+        border: none !important;
+        background: transparent !important;
+        transition: all 0.18s ease !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #1DB954 !important;
+        color: #000 !important;
+        box-shadow: 0 2px 14px rgba(29,185,84,0.4) !important;
+    }
+
+    /* Badges */
+    .badge-pill {
+        display: inline-block;
+        padding: 0.2rem 0.65rem;
         border-radius: 50px;
-        font-size: 0.72rem;
+        font-weight: 700;
+        font-size: 0.67rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .badge-pill-green  { background:rgba(29,185,84,0.14); color:#1DB954; border:1px solid rgba(29,185,84,0.4); }
+    .badge-pill-amber  { background:rgba(255,160,0,0.14);  color:#FFA000; border:1px solid rgba(255,160,0,0.4); }
+    .badge-pill-red    { background:rgba(233,20,41,0.14);   color:#E91429; border:1px solid rgba(233,20,41,0.4); }
+    .badge-pill-blue   { background:rgba(46,119,208,0.14);  color:#5799EF; border:1px solid rgba(46,119,208,0.4); }
+
+    /* Spotify Card */
+    .spotify-card {
+        background: #161616;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        padding: 1.2rem 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+    }
+    .spotify-card:hover {
+        background: #1e1e1e;
+        border-color: rgba(255,255,255,0.13);
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .spotify-badge {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        background: rgba(29,185,84,0.12);
+        border: 1px solid rgba(29,185,84,0.35);
+        color: #1DB954;
+        padding: 0.28rem 0.8rem;
+        border-radius: 50px;
+        font-size: 0.67rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        margin-bottom: 0.6rem;
     }
 
-    .spotify-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        color: #FFFFFF;
-        margin: 0;
-        line-height: 1.2;
-    }
-
-    .spotify-subtitle {
-        color: #B3B3B3;
-        font-size: 0.95rem;
-        margin-top: 0.4rem;
-        font-weight: 400;
-    }
-
-    /* Spotify Sleek Cards */
-    .spotify-card {
-        background: #181818;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 12px;
-        padding: 1.25rem 1.4rem;
-        margin-bottom: 1rem;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .spotify-card:hover {
-        background: #202020;
-        border-color: rgba(255, 255, 255, 0.15);
-        transform: translateY(-2px);
-    }
-
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background-color: #121212 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    /* Tabs Styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #121212;
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px !important;
-        color: #B3B3B3 !important;
-        font-weight: 600 !important;
-        font-size: 0.85rem !important;
-        padding: 8px 16px !important;
-        border: none !important;
-        background: transparent !important;
-        transition: all 0.2s ease;
-    }
-
-    .stTabs [aria-selected="true"] {
-        background-color: #282828 !important;
-        color: #1DB954 !important;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-    }
-
-    /* Custom Status Badges */
-    .badge-pill {
-        display: inline-block;
-        padding: 0.25rem 0.65rem;
-        border-radius: 50px;
-        font-weight: 700;
-        font-size: 0.72rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    .badge-pill-green {
-        background: rgba(29, 185, 84, 0.15);
-        color: #1DB954;
-        border: 1px solid rgba(29, 185, 84, 0.5);
-    }
-
-    .badge-pill-amber {
-        background: rgba(255, 160, 0, 0.15);
-        color: #FFA000;
-        border: 1px solid rgba(255, 160, 0, 0.5);
-    }
-
-    .badge-pill-red {
-        background: rgba(233, 20, 41, 0.15);
-        color: #E91429;
-        border: 1px solid rgba(233, 20, 41, 0.5);
-    }
-
-    .badge-pill-blue {
-        background: rgba(46, 119, 208, 0.15);
-        color: #5799EF;
-        border: 1px solid rgba(46, 119, 208, 0.5);
-    }
-
-    /* 4-Quadrant Cards */
+    /* Decision Matrix Cards */
     .matrix-card {
-        padding: 1.1rem 1.3rem;
+        padding: 1rem 1.2rem;
         border-radius: 12px;
-        margin-bottom: 0.85rem;
-        background: #181818;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        transition: all 0.25s ease;
+        margin-bottom: 0.8rem;
+        background: #161616;
+        border: 1px solid rgba(255,255,255,0.06);
+        transition: all 0.22s ease;
     }
-
     .matrix-card-active {
         border: 2px solid #1DB954 !important;
-        background: rgba(29, 185, 84, 0.08) !important;
-        box-shadow: 0 0 24px rgba(29, 185, 84, 0.25);
+        background: rgba(29,185,84,0.07) !important;
+        box-shadow: 0 0 28px rgba(29,185,84,0.18);
     }
 
-    /* Streamlit Native Metric Card Overrides */
+    /* Native Metrics */
     [data-testid="stMetric"] {
-        background-color: #181818 !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        background: #161616 !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
         border-radius: 12px !important;
         padding: 1rem !important;
     }
+    [data-testid="stMetricValue"] { color:#fff !important; font-weight:800 !important; }
+    [data-testid="stMetricLabel"] { color:#666 !important; font-size:0.73rem !important; text-transform:uppercase; letter-spacing:0.04em; }
 
-    [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
-        font-weight: 800 !important;
-    }
-
-    /* Inputs and Buttons */
-    .stButton>button {
-        background-color: #1DB954 !important;
-        color: #000000 !important;
+    /* Buttons */
+    .stButton > button {
+        background: #1DB954 !important;
+        color: #000 !important;
         font-weight: 700 !important;
         border-radius: 50px !important;
-        padding: 0.55rem 1.4rem !important;
+        padding: 0.5rem 1.4rem !important;
         border: none !important;
-        transition: all 0.2s ease !important;
+        font-size: 0.84rem !important;
+        transition: all 0.18s ease !important;
+    }
+    .stButton > button:hover {
+        background: #1ED760 !important;
+        transform: scale(1.03) !important;
+        box-shadow: 0 6px 24px rgba(29,185,84,0.4) !important;
     }
 
-    .stButton>button:hover {
-        background-color: #1ED760 !important;
-        transform: scale(1.02);
-        box-shadow: 0 4px 20px rgba(29, 185, 84, 0.4) !important;
+    /* Inputs */
+    [data-baseweb="input"] > div,
+    [data-baseweb="select"] > div:first-child,
+    [data-baseweb="textarea"] > div {
+        background: #1a1a1a !important;
+        border: 1px solid rgba(255,255,255,0.09) !important;
+        border-radius: 8px !important;
+        color: #fff !important;
     }
+
+    /* DataFrames */
+    [data-testid="stDataFrame"] { border-radius: 10px !important; overflow: hidden; }
+
+    /* Expanders */
+    [data-testid="stExpander"] > div:first-child {
+        background: #141414 !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 10px !important;
+    }
+
+    /* Alerts */
+    [data-testid="stAlert"] { border-radius: 10px !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown(
+# ── Immersive Hero Header rendered as a standalone HTML component ─────────────
+components.html(
     """
-    <div class="spotify-header">
-        <div class="spotify-badge">Sound Risk Intelligence · DPDP Act 2023 · SHA-256 Ledger</div>
-        <div class="spotify-title">Behavioral Credit Decision Support System</div>
-        <div class="spotify-subtitle">
-            Dual-Pillar Underwriting Engine: Deterministic Statement Cash Flow (Pillar 1) + LightGBM Risk Benchmark (Pillar 2)
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800;900&display=swap');
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
+
+      .hero {
+        position: relative;
+        background: #0a0a0a;
+        border-radius: 20px;
+        padding: 2.2rem 2.6rem 1.8rem;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.07);
+      }
+      .hero::before {
+        content: '';
+        position: absolute; top: -70px; left: -70px;
+        width: 360px; height: 360px;
+        background: radial-gradient(circle, rgba(29,185,84,0.20) 0%, transparent 70%);
+        border-radius: 50%;
+        animation: glow 4s ease-in-out infinite;
+      }
+      .hero::after {
+        content: '';
+        position: absolute; bottom: -90px; right: 3%;
+        width: 280px; height: 280px;
+        background: radial-gradient(circle, rgba(29,185,84,0.09) 0%, transparent 65%);
+        border-radius: 50%;
+        animation: glow 6.5s ease-in-out 1.2s infinite;
+      }
+      @keyframes glow {
+        0%,100% { transform: scale(1);   opacity: 0.75; }
+        50%      { transform: scale(1.18); opacity: 1; }
+      }
+      .inner { position: relative; z-index: 1; }
+
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: rgba(29,185,84,0.10);
+        border: 1px solid rgba(29,185,84,0.30);
+        color: #1DB954;
+        padding: 4px 14px;
+        border-radius: 50px;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.11em;
+        margin-bottom: 1rem;
+      }
+      .dot {
+        width: 6px; height: 6px;
+        background: #1DB954;
+        border-radius: 50%;
+        animation: blink 1.5s ease-in-out infinite;
+      }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+      .title {
+        font-size: 2.5rem;
+        font-weight: 900;
+        color: #fff;
+        letter-spacing: -0.045em;
+        line-height: 1.1;
+        margin-bottom: 0.55rem;
+      }
+      .title .green { color: #1DB954; }
+
+      .subtitle {
+        font-size: 0.875rem;
+        color: #606060;
+        line-height: 1.55;
+        max-width: 580px;
+      }
+
+      .pillars {
+        display: flex; gap: 0.85rem; margin-top: 1.5rem; flex-wrap: wrap;
+      }
+      .chip {
+        display: flex; align-items: center; gap: 9px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 10px;
+        padding: 0.5rem 0.9rem;
+        font-size: 0.76rem;
+        color: #aaa;
+        font-weight: 500;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      .chip:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.14); }
+      .chip-ico {
+        width: 26px; height: 26px;
+        background: rgba(29,185,84,0.14);
+        border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.72rem; color: #1DB954; font-weight: 900;
+      }
+      .chip-label { color: #fff; display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+    </style>
+
+    <div class="hero">
+      <div class="inner">
+        <div class="eyebrow">
+          <div class="dot"></div>
+          Sound Risk Intelligence &nbsp;&middot;&nbsp; DPDP Act 2023 &nbsp;&middot;&nbsp; SHA-256 Ledger
         </div>
+        <div class="title">Credit Decision<br><span class="green">Support System</span></div>
+        <div class="subtitle">
+          Dual-Pillar Underwriting Engine — Deterministic Statement Cash Flow analysis combined with
+          LightGBM Bureau Risk Benchmark for officer-assisted credit evaluation.
+        </div>
+        <div class="pillars">
+          <div class="chip">
+            <div class="chip-ico">P1</div>
+            <div><span class="chip-label">Pillar 1</span>Statement Affordability</div>
+          </div>
+          <div class="chip">
+            <div class="chip-ico">P2</div>
+            <div><span class="chip-label">Pillar 2</span>Bureau Risk — LightGBM</div>
+          </div>
+          <div class="chip">
+            <div class="chip-ico">2x2</div>
+            <div><span class="chip-label">Matrix</span>Dual-Pillar Quadrant</div>
+          </div>
+        </div>
+      </div>
     </div>
     """,
-    unsafe_allow_html=True,
+    height=272,
 )
+
 
 # Demo Personas Catalog for Instant Panel Evaluation
 DEMO_PERSONAS = {
@@ -310,9 +417,23 @@ DEMO_PERSONAS = {
 }
 
 with st.sidebar:
-    st.markdown('<div class="spotify-badge">Underwriting Console</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="padding: 0.5rem 0 1rem;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:0.4rem;">
+            <div style="width:8px;height:8px;background:#1DB954;border-radius:50%;box-shadow:0 0 8px rgba(29,185,84,0.7);flex-shrink:0;animation:pulse2 2s infinite"></div>
+            <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1DB954;">System Active</span>
+          </div>
+          <div style="font-size:1.05rem;font-weight:800;color:#fff;letter-spacing:-0.02em;">Underwriting Console</div>
+          <div style="font-size:0.72rem;color:#444;margin-top:2px;">Dual-Pillar Credit Engine</div>
+          <style>@keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.3}}</style>
+        </div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin-bottom:0.8rem;">
+        """,
+        unsafe_allow_html=True,
+    )
     st.header("Applicant & Request")
-    
+
     selected_persona_name = st.selectbox(
         "Load Preset Demo Persona",
         options=list(DEMO_PERSONAS.keys()),
@@ -493,19 +614,158 @@ with tab_summary:
                 unsafe_allow_html=True,
             )
 
-        with st.container(horizontal=True):
-            st.metric("Before new loan surplus", f"INR {st.session_state.features['monthly_surplus']:,.0f}", border=True)
-            st.metric("Estimated new EMI", f"INR {proposed_emi:,.0f}", border=True)
-            st.metric("After new loan surplus", f"INR {st.session_state.features['post_loan_monthly_surplus']:,.0f}", border=True)
-        
+        # ── Custom animated stat card row ────────────────────────────────────────
+        surplus_before = st.session_state.features['monthly_surplus']
+        surplus_after  = st.session_state.features['post_loan_monthly_surplus']
+        surplus_delta  = surplus_after - surplus_before
+        surplus_after_color  = "#1DB954" if surplus_after >= 0 else "#E91429"
+        surplus_delta_color  = "#1DB954" if surplus_delta >= 0 else "#E91429"
+        _stat_cards_html = f"""
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
+          * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+          body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
+          .stat-row {{ display: flex; gap: 14px; }}
+          .stat-card {{
+            flex: 1;
+            background: #161616;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            padding: 1.1rem 1.3rem 1rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, border-color 0.2s;
+          }}
+          .stat-card:hover {{ transform: translateY(-3px); border-color: rgba(255,255,255,0.15); }}
+          .stat-card::after {{
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 0 0 14px 14px;
+          }}
+          .card-green::after  {{ background: #1DB954; box-shadow: 0 0 12px rgba(29,185,84,0.5); }}
+          .card-red::after    {{ background: #E91429; box-shadow: 0 0 12px rgba(233,20,41,0.4); }}
+          .card-neutral::after {{ background: #5799EF; box-shadow: 0 0 12px rgba(87,153,239,0.4); }}
+          .card-label {{
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #555;
+            margin-bottom: 0.55rem;
+          }}
+          .card-value {{
+            font-size: 1.75rem;
+            font-weight: 900;
+            color: #fff;
+            letter-spacing: -0.03em;
+            line-height: 1;
+          }}
+          .card-sub {{
+            font-size: 0.72rem;
+            color: #555;
+            margin-top: 0.35rem;
+          }}
+          .card-delta {{
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 50px;
+            margin-top: 0.4rem;
+          }}
+        </style>
+        <div class="stat-row">
+          <div class="stat-card card-green">
+            <div class="card-label">Before New Loan — Monthly Surplus</div>
+            <div class="card-value">INR {surplus_before:,.0f}</div>
+            <div class="card-sub">Current net cash position after expenses</div>
+          </div>
+          <div class="stat-card card-neutral">
+            <div class="card-label">Estimated New EMI</div>
+            <div class="card-value">INR {proposed_emi:,.0f}</div>
+            <div class="card-sub">Calculated at {annual_interest_rate:.1f}% p.a. over {loan_tenure_months} months</div>
+          </div>
+          <div class="stat-card {'card-green' if surplus_after >= 0 else 'card-red'}">
+            <div class="card-label">After New Loan — Monthly Surplus</div>
+            <div class="card-value" style="color:{surplus_after_color};">INR {surplus_after:,.0f}</div>
+            <div class="card-delta" style="background:{'rgba(29,185,84,0.12)' if surplus_delta >= 0 else 'rgba(233,20,41,0.12)'}; color:{surplus_delta_color};">
+              {'▲' if surplus_delta >= 0 else '▼'} INR {abs(surplus_delta):,.0f} vs before
+            </div>
+          </div>
+        </div>
+        """
+        components.html(_stat_cards_html, height=130)
+
         review_flags = extract_review_flags(decision.reasons)
-        with st.container(border=True):
-            st.subheader("Officer review checklist")
-            if review_flags:
-                for flag in review_flags:
-                    st.write(f"- {flag}")
-            else:
-                st.write("- No mandatory evidence safeguard is currently triggered. Officer review remains required.")
+        # ── Styled Review Checklist ───────────────────────────────────────────
+        if review_flags:
+            flag_items_html = "".join(
+                f"""<div class="flag-item">
+                      <div class="flag-dot"></div>
+                      <div class="flag-text">{flag}</div>
+                    </div>"""
+                for flag in review_flags
+            )
+            checklist_status = "action-required"
+            checklist_header = "Review Flags — Action Required"
+            checklist_border = "#E91429"
+            checklist_bg = "rgba(233,20,41,0.05)"
+        else:
+            flag_items_html = """<div class="flag-item clear">
+                                   <div class="flag-dot clear-dot"></div>
+                                   <div class="flag-text">No mandatory evidence safeguard triggered. Officer review remains required per policy.</div>
+                                 </div>"""
+            checklist_header = "Review Checklist — No Critical Flags"
+            checklist_border = "#1DB954"
+            checklist_bg = "rgba(29,185,84,0.05)"
+
+        _checklist_html = f"""
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+          * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+          body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
+          .checklist {{
+            background: {checklist_bg};
+            border: 1px solid rgba(255,255,255,0.07);
+            border-left: 4px solid {checklist_border};
+            border-radius: 12px;
+            padding: 1rem 1.3rem;
+          }}
+          .checklist-header {{
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: {checklist_border};
+            margin-bottom: 0.8rem;
+          }}
+          .flag-item {{
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 0.45rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+          }}
+          .flag-item:last-child {{ border-bottom: none; }}
+          .flag-dot {{
+            width: 7px; height: 7px;
+            background: #E91429;
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+          }}
+          .clear-dot {{ background: #1DB954; }}
+          .flag-text {{ font-size: 0.82rem; color: #ccc; line-height: 1.45; }}
+        </style>
+        <div class="checklist">
+          <div class="checklist-header">{checklist_header}</div>
+          {flag_items_html}
+        </div>
+        """
+        components.html(_checklist_html, height=max(80, 50 + len(review_flags) * 52) if review_flags else 100)
+
         with st.expander("Case-summary evidence table", expanded=True):
             case_summary = build_case_summary_rows(
                 st.session_state.features, quality, decision, requested_amount, proposed_emi, applicant_id
@@ -976,7 +1236,7 @@ with tab_decision:
                         <div class="matrix-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#34D399;">Q1: Meets Indicative Criteria</b>
-                                <span class="badge-pill badge-pill-green">{'📍 CURRENT PLACEMENT' if is_active else 'Score ≥ 70 & PD < 20%'}</span>
+                                <span class="badge-pill badge-pill-green">{'ACTIVE' if is_active else 'Score ≥ 70 & PD < 20%'}</span>
                             </div>
                             <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
                                 Robust statement cash-flow surplus accompanied by acceptable external credit bureau default risk.
@@ -993,7 +1253,7 @@ with tab_decision:
                         <div class="matrix-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#FBBF24;">Q2: Manual Review (Bureau Risk)</b>
-                                <span class="badge-pill badge-pill-amber">{'📍 CURRENT PLACEMENT' if is_active else 'Score ≥ 70 & PD ≥ 20%'}</span>
+                                <span class="badge-pill badge-pill-amber">{'ACTIVE' if is_active else 'Score ≥ 70 & PD ≥ 20%'}</span>
                             </div>
                             <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
                                 Statement surplus appears viable, but external trade lines or delinquency history signal elevated default risk.
@@ -1012,7 +1272,7 @@ with tab_decision:
                         <div class="matrix-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#FBBF24;">Q3: Manual Review (Cashflow Alert)</b>
-                                <span class="badge-pill badge-pill-amber">{'📍 CURRENT PLACEMENT' if is_active else 'Score < 70 & PD < 20%'}</span>
+                                <span class="badge-pill badge-pill-amber">{'ACTIVE' if is_active else 'Score < 70 & PD < 20%'}</span>
                             </div>
                             <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
                                 Clean bureau history, but statement indicates thin cash reserves, volatile income, or heavy expense burden.
@@ -1029,7 +1289,7 @@ with tab_decision:
                         <div class="matrix-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#F87171;">Q4: Decline (Dual Risk Elevation)</b>
-                                <span class="badge-pill badge-pill-red">{'📍 CURRENT PLACEMENT' if is_active else 'Score < 70 & PD ≥ 20%'}</span>
+                                <span class="badge-pill badge-pill-red">{'ACTIVE' if is_active else 'Score < 70 & PD ≥ 20%'}</span>
                             </div>
                             <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
                                 Depleted cash flow and high debt obligations compounded by elevated external credit default risk.
@@ -1051,12 +1311,118 @@ with tab_decision:
                 st.warning(f"Cross-document salary safeguard: {sv.status} (Declared: ₹{sv.slip_net_salary:,.0f} vs Statement: ₹{sv.detected_statement_salary:,.0f})")
 
         st.caption(f"Rule version: {decision.rule_version}. Policy safeguards override numerical scores when evidence is contradictory or incomplete.")
-        st.subheader("Score components")
-        component_table = pd.DataFrame([
-            {"Component": component, "Points": f"{points:.1f}"}
-            for component, points in (decision.affordability_components or {}).items()
-        ])
-        st.dataframe(component_table, hide_index=True)
+
+        # ── Animated score breakdown bars (replaces st.dataframe) ────────────
+        affordability_components = decision.affordability_components or {}
+        if affordability_components:
+            max_points_total = max(abs(v) for v in affordability_components.values()) if affordability_components else 1
+            bar_items_html = ""
+            for comp_name, comp_pts in affordability_components.items():
+                pct = min(100.0, abs(comp_pts) / max(1, max_points_total) * 100)
+                bar_color = "#1DB954" if comp_pts >= 0 else "#E91429"
+                bar_bg    = "rgba(29,185,84,0.10)" if comp_pts >= 0 else "rgba(233,20,41,0.10)"
+                pts_label = f"+{comp_pts:.1f}" if comp_pts >= 0 else f"{comp_pts:.1f}"
+                label_clean = comp_name.replace("_", " ").title()
+                bar_items_html += f"""
+                <div class="bar-row">
+                  <div class="bar-label">{label_clean}</div>
+                  <div class="bar-track">
+                    <div class="bar-fill" style="width:{pct:.1f}%; background:{bar_color}; box-shadow: 0 0 8px {bar_color}44;"></div>
+                  </div>
+                  <div class="bar-pts" style="color:{bar_color};">{pts_label}</div>
+                </div>
+                """
+            total_pts = sum(affordability_components.values())
+            total_color = "#1DB954" if total_pts >= 0 else "#E91429"
+            n_bars = len(affordability_components)
+            bar_height = 50 + n_bars * 46
+            _score_bars_html = f"""
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+              * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+              body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
+              .score-container {{
+                background: #141414;
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 14px;
+                padding: 1.2rem 1.5rem;
+              }}
+              .score-header {{
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 1rem;
+                padding-bottom: 0.7rem;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+              }}
+              .score-title {{
+                font-size: 0.68rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #555;
+              }}
+              .score-total {{
+                font-size: 1.3rem;
+                font-weight: 900;
+                color: {total_color};
+                letter-spacing: -0.03em;
+              }}
+              .bar-row {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 0.55rem;
+              }}
+              .bar-label {{
+                font-size: 0.76rem;
+                color: #aaa;
+                font-weight: 500;
+                width: 220px;
+                flex-shrink: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }}
+              .bar-track {{
+                flex: 1;
+                height: 6px;
+                background: rgba(255,255,255,0.06);
+                border-radius: 3px;
+                overflow: hidden;
+              }}
+              .bar-fill {{
+                height: 100%;
+                border-radius: 3px;
+                width: 0%;
+                transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+              }}
+              .bar-pts {{
+                font-size: 0.77rem;
+                font-weight: 700;
+                width: 46px;
+                text-align: right;
+                flex-shrink: 0;
+              }}
+            </style>
+            <div class="score-container">
+              <div class="score-header">
+                <div class="score-title">Affordability Score Breakdown</div>
+                <div class="score-total">{decision.affordability_score} / 100</div>
+              </div>
+              {bar_items_html}
+            </div>
+            <script>
+              // Trigger bar animations after render
+              setTimeout(function() {{
+                document.querySelectorAll('.bar-fill').forEach(function(el) {{
+                  el.style.width = el.style.width; // reflow
+                }});
+              }}, 80);
+            </script>
+            """
+            components.html(_score_bars_html, height=bar_height)
+        else:
+            st.caption("No affordability score components available.")
+
         with st.expander("Active policy and safeguards"):
             st.caption(POLICY["evidence_status"])
             st.dataframe(
@@ -1084,7 +1450,7 @@ with tab_decision:
                 
                 # Interactive Scenario Stress Testing Lab
                 st.markdown("---")
-                st.subheader("⚡ Real-Time Scenario Shock & Stress Testing Lab")
+                st.subheader("Scenario Shock and Stress Testing Lab")
                 st.caption("Interactively test applicant loan capacity and risk stability under adverse economic shocks.")
                 
                 col_s1, col_s2, col_s3 = st.columns(3)
