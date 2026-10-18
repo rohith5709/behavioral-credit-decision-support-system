@@ -6,6 +6,7 @@ not score incompatible raw statement data.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 from pathlib import Path
@@ -25,7 +26,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, f1_score, precision_score, recall_score, roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
@@ -41,19 +42,38 @@ VALIDATION_FRACTION_OF_DEVELOPMENT = 0.20
 DEFAULT_THRESHOLDS = (0.20, 0.30, 0.40, 0.50)
 BOOTSTRAP_SAMPLES = 200
 EXPENSIVE_MODEL_TRAINING_CAP = 50_000
+REPEATED_CV_MAX_ROWS = 30_000
+EXCLUDED_SENSITIVE_PROXY_FEATURES = ("DAYS_BIRTH", "CNT_FAM_MEMBERS")
 
 
 def evaluate_probabilities(y_true: pd.Series, probability: np.ndarray, threshold: float = 0.50) -> dict[str, float]:
     """Calculate comparable probability and classification metrics."""
     prediction = (probability >= threshold).astype(int)
+    prevalence = float(np.mean(y_true))
+    brier = float(brier_score_loss(y_true, probability))
     return {
         "roc_auc": round(float(roc_auc_score(y_true, probability)), 4),
         "pr_auc": round(float(average_precision_score(y_true, probability)), 4),
-        "brier_score": round(float(brier_score_loss(y_true, probability)), 4),
+        "brier_score": round(brier, 4),
+        "class_prevalence": round(prevalence, 4),
+        "pr_auc_lift_over_prevalence": round(float(average_precision_score(y_true, probability)) / prevalence, 4) if prevalence else 0.0,
+        "brier_skill_score": round(1 - brier / (prevalence * (1 - prevalence)), 4) if 0 < prevalence < 1 else 0.0,
         "recall": round(float(recall_score(y_true, prediction, zero_division=0)), 4),
         "precision": round(float(precision_score(y_true, prediction, zero_division=0)), 4),
         "f1": round(float(f1_score(y_true, prediction, zero_division=0)), 4),
     }
+
+
+def expected_calibration_error(y_true: pd.Series, probability: np.ndarray, bins: int = 10) -> float:
+    """Return equal-width expected calibration error for descriptive reporting."""
+    target, probability = np.asarray(y_true), np.asarray(probability)
+    bin_index = np.minimum((probability * bins).astype(int), bins - 1)
+    error = 0.0
+    for index in range(bins):
+        members = bin_index == index
+        if members.any():
+            error += float(members.mean()) * abs(float(target[members].mean()) - float(probability[members].mean()))
+    return round(error, 4)
 
 
 def select_best_model(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -83,6 +103,48 @@ def select_threshold(rows: list[dict[str, float]]) -> dict[str, float]:
     if candidates:
         return sorted(candidates, key=lambda row: (-row["precision"], -row["recall"], row["threshold"]))[0]
     return sorted(rows, key=lambda row: (-row["recall"], -row["precision"], row["threshold"]))[0]
+
+
+def target_recall_operating_points(y_true: pd.Series, probability: np.ndarray, targets: tuple[float, ...] = (0.50, 0.60, 0.70)) -> list[dict[str, float | bool]]:
+    """Show highest alert thresholds that attain requested recall targets, if feasible."""
+    rows: list[dict[str, float | bool]] = []
+    for target in targets:
+        candidates = []
+        for threshold in np.unique(probability):
+            metrics = evaluate_probabilities(y_true, probability, float(threshold))
+            if metrics["recall"] >= target:
+                candidates.append((float(threshold), metrics))
+        if candidates:
+            threshold, metrics = max(candidates, key=lambda item: item[0])
+            rows.append({"target_recall": target, "feasible": True, "threshold": round(threshold, 4), "recall": metrics["recall"], "precision": metrics["precision"], "flagged_applicant_rate": round(float((probability >= threshold).mean()), 4)})
+        else:
+            rows.append({"target_recall": target, "feasible": False})
+    return rows
+
+
+def _group_diagnostics(raw_features: pd.DataFrame, y_true: pd.Series, probability: np.ndarray, threshold: float, minimum_rows: int = 500) -> dict[str, list[dict[str, float | int | str]]]:
+    """Report descriptive diagnostics for available age/family groups; not a fairness certification."""
+    age = (-pd.to_numeric(raw_features["DAYS_BIRTH"], errors="coerce") / 365.25).clip(lower=18, upper=100)
+    family = pd.to_numeric(raw_features["CNT_FAM_MEMBERS"], errors="coerce")
+    groups = {
+        "age_band": pd.cut(age, bins=[17, 29, 44, 59, 100], labels=["18-29", "30-44", "45-59", "60+"]).astype("string"),
+        "family_size_band": pd.cut(family, bins=[-1, 1, 3, float("inf")], labels=["1", "2-3", "4+"]).astype("string"),
+    }
+    output: dict[str, list[dict[str, float | int | str]]] = {}
+    target = pd.Series(np.asarray(y_true), index=raw_features.index)
+    scores = pd.Series(probability, index=raw_features.index)
+    for name, values in groups.items():
+        rows: list[dict[str, float | int | str]] = []
+        for group in sorted(values.dropna().unique()):
+            member = values == group
+            if int(member.sum()) < minimum_rows or target[member].nunique() < 2:
+                continue
+            prediction = (scores[member] >= threshold).astype(int)
+            negatives = target[member] == 0
+            false_positive_rate = float(((prediction == 1) & negatives).sum() / negatives.sum()) if negatives.any() else 0.0
+            rows.append({"group": str(group), "rows": int(member.sum()), "default_prevalence": round(float(target[member].mean()), 4), "recall": round(float(recall_score(target[member], prediction, zero_division=0)), 4), "precision": round(float(precision_score(target[member], prediction, zero_division=0)), 4), "false_positive_rate": round(false_positive_rate, 4), "expected_calibration_error": expected_calibration_error(target[member], scores[member].to_numpy())})
+        output[name] = rows
+    return output
 
 
 def reliability_rows(y_true: pd.Series, probability: np.ndarray, bins: int = 10) -> list[dict[str, float]]:
@@ -121,10 +183,12 @@ def _candidate_definitions(positive_weight: float) -> list[tuple[str, object, bo
     ]
 
 
-def _split_data(features: pd.DataFrame, target: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
+def _split_data(features: pd.DataFrame, target: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
     development, test, y_development, y_test = train_test_split(features, target, test_size=TEST_FRACTION, stratify=target, random_state=RANDOM_SEED)
-    train, validation, y_train, y_validation = train_test_split(development, y_development, test_size=VALIDATION_FRACTION_OF_DEVELOPMENT, stratify=y_development, random_state=RANDOM_SEED)
-    return train, validation, test, y_train, y_validation, y_test
+    remaining, threshold, y_remaining, y_threshold = train_test_split(development, y_development, test_size=0.0625, stratify=y_development, random_state=RANDOM_SEED + 1)
+    remaining, calibration, y_remaining, y_calibration = train_test_split(remaining, y_remaining, test_size=1 / 15, stratify=y_remaining, random_state=RANDOM_SEED + 2)
+    train, selection, y_train, y_selection = train_test_split(remaining, y_remaining, test_size=1 / 7, stratify=y_remaining, random_state=RANDOM_SEED + 3)
+    return train, selection, calibration, threshold, test, y_train, y_selection, y_calibration, y_threshold, y_test
 
 
 def _prepare_train_validation_test(train: pd.DataFrame, validation: pd.DataFrame, test: pd.DataFrame) -> tuple[SimpleImputer, StandardScaler, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -156,37 +220,50 @@ def _environment_metadata() -> dict[str, str]:
 
 
 def train(data_dir: str | Path = HOME_CREDIT_DIR) -> dict[str, Any]:
-    """Select on validation data and reveal final test metrics exactly once."""
-    features, target = build_home_credit_features(data_dir)
-    train_frame, validation_frame, test_frame, y_train, y_validation, y_test = _split_data(features, target)
-    _, _, train_ready, validation_ready, _, train_scaled, validation_scaled, _ = _prepare_train_validation_test(train_frame, validation_frame, test_frame)
+    """Run a leakage-controlled benchmark; the final test labels stay sealed until reporting."""
+    raw_features, target = build_home_credit_features(data_dir)
+    excluded = [column for column in EXCLUDED_SENSITIVE_PROXY_FEATURES if column in raw_features]
+    features = raw_features.drop(columns=excluded)
+    train_frame, selection_frame, calibration_frame, threshold_frame, test_frame, y_train, y_selection, y_calibration, y_threshold, y_test = _split_data(features, target)
+    raw_test = raw_features.loc[test_frame.index]
+    _, _, train_ready, selection_ready, _, train_scaled, selection_scaled, _ = _prepare_train_validation_test(train_frame, selection_frame, calibration_frame)
     positive_weight = float((y_train == 0).sum() / (y_train == 1).sum())
     results: list[dict[str, Any]] = []
     fitted: dict[str, tuple[object, bool]] = {}
     for name, classifier, needs_scaling in _candidate_definitions(positive_weight):
-        candidate_train, candidate_validation, candidate_target = (train_scaled if needs_scaling else train_ready), (validation_scaled if needs_scaling else validation_ready), y_train
+        candidate_train, candidate_validation, candidate_target = (train_scaled if needs_scaling else train_ready), (selection_scaled if needs_scaling else selection_ready), y_train
         if "50k cap" in name:
             candidate_train, candidate_target = _stratified_sample(candidate_train, y_train)
         started = perf_counter()
         classifier.fit(candidate_train, candidate_target)
         probability = classifier.predict_proba(candidate_validation)[:, 1]  # type: ignore[attr-defined]
-        results.append({"model": name, "training_rows": int(len(candidate_target)), "training_seconds": round(perf_counter() - started, 2), **evaluate_probabilities(y_validation, probability)})
+        results.append({"model": name, "training_rows": int(len(candidate_target)), "training_seconds": round(perf_counter() - started, 2), **evaluate_probabilities(y_selection, probability)})
         fitted[name] = (classifier, needs_scaling)
     winner = select_best_model(results)
     winner_name = str(winner["model"])
     selected_classifier, needs_scaling = fitted[winner_name]
-    selected_train, selected_validation = (train_scaled, validation_scaled) if needs_scaling else (train_ready, validation_ready)
-    calibration_method, calibration_validation = _calibrate_on_training(selected_classifier, selected_train, y_train, selected_validation, y_validation)
-    validation_probability = selected_classifier.predict_proba(selected_validation)[:, 1]  # type: ignore[attr-defined]
+    imputer = SimpleImputer(strategy="median")
+    calibration_train_ready = imputer.fit_transform(train_frame)
+    calibration_ready = imputer.transform(calibration_frame)
+    threshold_ready = imputer.transform(threshold_frame)
+    calibration_scaler = StandardScaler()
+    calibration_train_scaled = calibration_scaler.fit_transform(calibration_train_ready)
+    calibration_scaled = calibration_scaler.transform(calibration_ready)
+    threshold_scaled = calibration_scaler.transform(threshold_ready)
+    selected_train, selected_calibration = (calibration_train_scaled, calibration_scaled) if needs_scaling else (calibration_train_ready, calibration_ready)
+    selected_threshold_data = threshold_scaled if needs_scaling else threshold_ready
+    calibration_method, calibration_validation = _calibrate_on_training(selected_classifier, selected_train, y_train, selected_calibration, y_calibration)
+    threshold_probability = selected_classifier.predict_proba(selected_threshold_data)[:, 1]  # type: ignore[attr-defined]
     if calibration_method != "Uncalibrated":
         calibration_kind = "sigmoid" if calibration_method == "Platt scaling" else "isotonic"
         selected_calibrator = CalibratedClassifierCV(estimator=clone(selected_classifier), method=calibration_kind, cv=3, n_jobs=8)
         selected_calibrator.fit(selected_train, y_train)
-        validation_probability = selected_calibrator.predict_proba(selected_validation)[:, 1]
-    validation_threshold_rows = threshold_analysis(y_validation, validation_probability)
+        threshold_probability = selected_calibrator.predict_proba(selected_threshold_data)[:, 1]
+    validation_threshold_rows = threshold_analysis(y_threshold, threshold_probability)
     selected_threshold = select_threshold(validation_threshold_rows)
 
-    development_frame, y_development = pd.concat([train_frame, validation_frame]), pd.concat([y_train, y_validation])
+    development_frame = pd.concat([train_frame, selection_frame, calibration_frame, threshold_frame])
+    y_development = pd.concat([y_train, y_selection, y_calibration, y_threshold])
     final_imputer = SimpleImputer(strategy="median")
     development_ready, test_ready = final_imputer.fit_transform(development_frame), final_imputer.transform(test_frame)
     final_scaler = StandardScaler()
@@ -205,13 +282,50 @@ def train(data_dir: str | Path = HOME_CREDIT_DIR) -> dict[str, Any]:
     final_probability = final_predictor.predict_proba(final_test)[:, 1]  # type: ignore[attr-defined]
     final_metrics = evaluate_probabilities(y_test, final_probability, float(selected_threshold["threshold"]))
     final_metrics |= {"threshold": float(selected_threshold["threshold"]), "confidence_intervals": bootstrap_confidence_intervals(y_test, final_probability)}
-    split = {"strategy": "Stratified train/validation/untouched-test split", "random_seed": RANDOM_SEED, "train_rows": int(len(y_train)), "validation_rows": int(len(y_validation)), "test_rows": int(len(y_test)), "train_fraction": 0.64, "validation_fraction": 0.16, "test_fraction": TEST_FRACTION, "note": "Model, calibration, and threshold choices were made without accessing final test labels."}
-    selection_metric = "Validation PR-AUC, then validation ROC-AUC, then lower validation Brier score"
+    split = {"strategy": "Stratified train/model-selection/calibration/threshold/untouched-test split", "random_seed": RANDOM_SEED, "train_rows": int(len(y_train)), "model_selection_rows": int(len(y_selection)), "calibration_rows": int(len(y_calibration)), "threshold_selection_rows": int(len(y_threshold)), "test_rows": int(len(y_test)), "train_fraction": 0.60, "model_selection_fraction": 0.10, "calibration_fraction": 0.05, "threshold_selection_fraction": 0.05, "test_fraction": TEST_FRACTION, "note": "Model, calibration-method, and threshold choices use separate partitions; final-test labels remain sealed until reporting."}
+    split_ids = pd.concat([pd.DataFrame({"applicant_id": part.index, "partition": label}) for part, label in ((train_frame, "train"), (selection_frame, "model_selection"), (calibration_frame, "calibration"), (threshold_frame, "threshold_selection"), (test_frame, "final_test"))])
+    split_ids.to_csv(REPORT_DIR / "home_credit_split_ids.csv.gz", index=False, compression="gzip")
+    split["split_id_file"] = "reports/home_credit_split_ids.csv.gz"
+    split["split_id_sha256"] = hashlib.sha256(split_ids.sort_values("applicant_id").to_csv(index=False).encode("utf-8")).hexdigest()
+    selection_metric = "Model-selection PR-AUC, then ROC-AUC, then lower Brier score"
     comparison = {"dataset": "Home Credit Default Risk", "evaluation_protocol": split, "selection_metric": selection_metric, "selected_model": winner_name, "models": results}
-    calibration = {"selected_model": winner_name, "selection_partition": "validation", "selected_method": calibration_method, "validation_comparison": calibration_validation, "final_test": {"brier_score": round(float(brier_score_loss(y_test, final_probability)), 4), "reliability": reliability_rows(y_test, final_probability)}}
-    thresholds = {"selected_model": winner_name, "selection_partition": "validation", "risk_policy": "Officer-review alert: prefer the most precise evaluated threshold reaching 50% validation recall; otherwise select the evaluated threshold with highest recall and report that the target was not reached.", "selected_threshold": selected_threshold, "validation_rows": validation_threshold_rows, "final_test_rows": threshold_analysis(y_test, final_probability)}
+    calibration = {"selected_model": winner_name, "selection_partition": "calibration", "selected_method": calibration_method, "calibration_comparison": calibration_validation, "final_test": {"brier_score": round(float(brier_score_loss(y_test, final_probability)), 4), "expected_calibration_error": expected_calibration_error(y_test, final_probability), "reliability": reliability_rows(y_test, final_probability)}}
+    thresholds = {"selected_model": winner_name, "selection_partition": "threshold_selection", "risk_policy": "Officer-review alert: prefer the most precise evaluated threshold reaching 50% threshold-selection recall; otherwise select the evaluated threshold with highest recall and report that the target was not reached.", "selected_threshold": selected_threshold, "threshold_selection_rows": validation_threshold_rows, "final_test_rows": threshold_analysis(y_test, final_probability), "target_recall_operating_points": target_recall_operating_points(y_test, final_probability)}
     metrics: dict[str, Any] = {"model_name": winner_name, "dataset": "Home Credit Default Risk", "evaluation_protocol": split, "selection_metric": selection_metric, "calibration_method": calibration_method, "final_test_metrics": final_metrics, "feature_count": int(features.shape[1])}
-    model_card = {"model_name": winner_name, "purpose": "Separate Home Credit default-risk benchmark; not for raw uploaded bank statements.", "data": "Home Credit Default Risk historical applicant and credit-history data.", "features": features.columns.tolist(), "training_configuration": {"random_seed": RANDOM_SEED, "candidate_training_cap": EXPENSIVE_MODEL_TRAINING_CAP, "package_versions": _environment_metadata()}, "evaluation": metrics, "limitations": ["Dataset/application context may not match intended deployment context.", "No individual applicant scoring is shown in the statement dashboard.", "Threshold is an officer-review alert policy, not an automated decision rule."]}
+    feature_audit = {"excluded_from_model": excluded, "reason": "Age and family-size fields are excluded from the benchmark model as sensitive/proxy fields. They are used only for descriptive final-test diagnostics.", "remaining_proxy_risk": "Other socioeconomic, location, employment, credit-history, and external-score variables may still act as proxies; Phase 1 diagnostics are not a fairness certification."}
+    fairness = {"scope": "Descriptive final-test diagnostics for available age and family-size groups; not a fairness certification or deployment approval.", "threshold": float(selected_threshold["threshold"]), "groups": _group_diagnostics(raw_test, y_test, final_probability, float(selected_threshold["threshold"]))}
+    ext_columns = [column for column in features.columns if column.startswith("EXT_SOURCE_")]
+    ablation_rows = []
+    for label, columns in (("with_ext_source", features.columns.tolist()), ("without_ext_source", [column for column in features.columns if column not in ext_columns])):
+        imp = SimpleImputer(strategy="median")
+        train_ablation = imp.fit_transform(train_frame[columns])
+        selection_ablation = imp.transform(selection_frame[columns])
+        _, template, _ = next(item for item in _candidate_definitions(positive_weight) if item[0] == winner_name)
+        template.fit(train_ablation, y_train)
+        ablation_rows.append({"variant": label, "feature_count": len(columns), **evaluate_probabilities(y_selection, template.predict_proba(selection_ablation)[:, 1])})
+    stability_rows = []
+    if len(y_development) > REPEATED_CV_MAX_ROWS:
+        stability_frame, _, stability_target, _ = train_test_split(
+            development_frame,
+            y_development,
+            train_size=REPEATED_CV_MAX_ROWS,
+            stratify=y_development,
+            random_state=RANDOM_SEED,
+        )
+    else:
+        stability_frame, stability_target = development_frame, y_development
+    splitter = RepeatedStratifiedKFold(n_splits=3, n_repeats=1, random_state=RANDOM_SEED)
+    for fold, (fit_index, evaluate_index) in enumerate(splitter.split(stability_frame, stability_target), 1):
+        fold_train, fold_evaluate = stability_frame.iloc[fit_index], stability_frame.iloc[evaluate_index]
+        fold_target, fold_holdout = stability_target.iloc[fit_index], stability_target.iloc[evaluate_index]
+        imp = SimpleImputer(strategy="median")
+        fit_ready, evaluate_ready = imp.fit_transform(fold_train), imp.transform(fold_evaluate)
+        _, template, _ = next(item for item in _candidate_definitions(float((fold_target == 0).sum() / (fold_target == 1).sum())) if item[0] == winner_name)
+        template.fit(fit_ready, fold_target)
+        stability_rows.append({"fold": fold, **evaluate_probabilities(fold_holdout, template.predict_proba(evaluate_ready)[:, 1])})
+    stability = pd.DataFrame(stability_rows)
+    repeated_cv = {"protocol": "RepeatedStratifiedKFold, 3 folds x 1 repeat on a deterministic pre-test development sample; selected model only.", "sample_rows": int(len(stability_target)), "sample_cap": REPEATED_CV_MAX_ROWS, "per_fold": stability_rows, "mean": {column: round(float(stability[column].mean()), 4) for column in ("roc_auc", "pr_auc", "brier_score", "pr_auc_lift_over_prevalence", "brier_skill_score")}, "standard_deviation": {column: round(float(stability[column].std()), 4) for column in ("roc_auc", "pr_auc", "brier_score", "pr_auc_lift_over_prevalence", "brier_skill_score")}}
+    model_card = {"model_name": winner_name, "purpose": "Separate Home Credit default-risk benchmark; not for raw uploaded bank statements.", "data": "Home Credit Default Risk historical applicant and credit-history data.", "features": features.columns.tolist(), "feature_audit": feature_audit, "training_configuration": {"random_seed": RANDOM_SEED, "candidate_training_cap": EXPENSIVE_MODEL_TRAINING_CAP, "package_versions": _environment_metadata()}, "evaluation": metrics, "fairness_diagnostics": fairness, "limitations": ["Dataset/application context may not match intended deployment context.", "No individual applicant scoring is shown in the statement dashboard.", "Threshold is an officer-review alert policy, not an automated decision rule.", "Group diagnostics do not establish fairness."]}
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     joblib.dump({"imputer": final_imputer, "scaler": final_scaler if final_needs_scaling else None, "classifier": final_classifier, "calibrator": final_predictor if calibration_method != "Uncalibrated" else None, "features": features.columns.tolist(), "dataset": "Home Credit Default Risk", "model_name": winner_name, "evaluation_protocol": split, "calibration_method": calibration_method, "selected_threshold": selected_threshold["threshold"]}, HOME_CREDIT_MODEL_PATH)
     HOME_CREDIT_METRICS_PATH.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
@@ -220,6 +334,9 @@ def train(data_dir: str | Path = HOME_CREDIT_DIR) -> dict[str, Any]:
     HOME_CREDIT_CALIBRATION_PATH.write_text(json.dumps(calibration, indent=2), encoding="utf-8")
     (REPORT_DIR / "home_credit_model_card.json").write_text(json.dumps(model_card, indent=2), encoding="utf-8")
     (REPORT_DIR / "home_credit_training_config.json").write_text(json.dumps({"split": split, "package_versions": _environment_metadata(), "feature_count": int(features.shape[1])}, indent=2), encoding="utf-8")
+    (REPORT_DIR / "home_credit_ablation.json").write_text(json.dumps({"selection_partition": "model_selection", "external_source_feature_count": len(ext_columns), "rows": ablation_rows, "note": "Ablation is evaluated on the model-selection partition only; it is not a transferability claim."}, indent=2), encoding="utf-8")
+    (REPORT_DIR / "home_credit_repeated_cv.json").write_text(json.dumps(repeated_cv, indent=2), encoding="utf-8")
+    (REPORT_DIR / "home_credit_group_diagnostics.json").write_text(json.dumps(fairness, indent=2), encoding="utf-8")
     return metrics
 
 

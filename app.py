@@ -36,6 +36,11 @@ from src.reporting.case_summary import (
     case_status,
     extract_review_flags,
 )
+from src.models.applicant_scoring import predict_applicant_risk
+from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
+
+# Initialize SQLite database for decision records
+init_db()
 
 st.set_page_config(page_title="Credit Decision Support", page_icon="💳", layout="wide")
 st.title("Behavioral Credit Decision Support System")
@@ -56,6 +61,34 @@ with st.sidebar:
         if monthly_rate == 0 else requested_amount * monthly_rate * (1 + monthly_rate) ** loan_tenure_months / ((1 + monthly_rate) ** loan_tenure_months - 1)
     ) if requested_amount else 0.0
     st.caption(f"Estimated new EMI: ₹{proposed_emi:,.0f}")
+
+    with st.expander("Applicant Bureau Profile (Pillar 2)", expanded=True):
+        enable_bureau = st.checkbox("Enable bureau risk scoring", value=True)
+        cibil_score = st.number_input("CIBIL / Credit Score", min_value=300, max_value=900, value=740, step=10)
+        applicant_age = st.number_input("Applicant Age (years)", min_value=18, max_value=85, value=32, step=1)
+        tenure_years = st.number_input("Employment tenure (years)", min_value=0.0, max_value=45.0, value=4.0, step=0.5)
+        active_loans = st.number_input("Active loans count", min_value=0, max_value=30, value=1, step=1)
+        overdue_days = st.number_input("Past overdue days", min_value=0, max_value=365, value=0, step=1)
+
+        bureau_profile = {
+            "cibil_score": cibil_score,
+            "age_years": applicant_age,
+            "years_employed": tenure_years,
+            "active_loans_count": active_loans,
+            "overdue_days": overdue_days,
+            "requested_amount": requested_amount,
+            "monthly_emi": proposed_emi or declared_emi,
+        }
+        if enable_bureau and Path(HOME_CREDIT_MODEL_PATH).exists():
+            try:
+                bureau_result = predict_applicant_risk(bureau_profile)
+                st.session_state.bureau_result = bureau_result
+                st.caption(f"Bureau Default Risk: **{bureau_result['model_probability']:.1%}** ({bureau_result['risk_band']})")
+            except Exception as e:
+                st.session_state.bureau_result = None
+                st.caption(f"Bureau model note: {e}")
+        else:
+            st.session_state.bureau_result = None
 
 SYNTHETIC_FEATURES_PATH = Path("data/synthetic/simulator_behaviour_features.csv")
 
@@ -83,6 +116,8 @@ if "statement" not in st.session_state:
     st.session_state.monthly_summary = None
     st.session_state.category_summary = None
     st.session_state.column_mapping = None
+    st.session_state.salary_verification = None
+    st.session_state.bureau_result = None
 
 
 def apply_statement(statement: pd.DataFrame, quality_report) -> None:
@@ -209,12 +244,15 @@ with tab_upload:
             if slip_salary > 0:
                 from src.documents.salary_verification import verify_salary_slip_cross_document
                 verification = verify_salary_slip_cross_document(statement, slip_salary, slip_employer)
+                st.session_state.salary_verification = verification
                 if verification.is_verified:
                     st.success(f"Salary slip verification: {verification.status}")
                 else:
                     st.warning(f"Salary slip verification: {verification.status}")
                 for r in verification.reasons:
                     st.caption(f"- {r}")
+            else:
+                st.session_state.salary_verification = None
         except (ValueError, pd.errors.ParserError) as error:
             st.error(str(error))
     if st.session_state.statement is not None:
@@ -541,19 +579,54 @@ with tab_decision:
     st.subheader("Indicative assessment and officer review")
     if not consent:
         st.warning("Confirm applicant consent before recording a prototype recommendation.")
+    bureau_prob = (
+        st.session_state.bureau_result["model_probability"]
+        if st.session_state.get("bureau_result") is not None
+        else None
+    )
     decision = recommend(
-        model_probability=None,
+        model_probability=bureau_prob,
         statement_features=st.session_state.features,
         extraction_confidence=(st.session_state.quality_report.score if st.session_state.quality_report else None),
         quality_report=st.session_state.quality_report,
+        salary_verification=st.session_state.get("salary_verification"),
     )
     if decision.affordability_score is None:
         st.info("Upload and analyse a statement to generate an affordability assessment.")
     else:
-        decision_columns = st.columns(2, border=True)
-        decision_columns[0].metric("Behavioural affordability score", f"{decision.affordability_score}/100")
-        decision_columns[1].metric("System recommendation", decision.recommendation)
-        st.caption(f"Rule version: {decision.rule_version}. This is a transparent statement-based assessment, not the Home Credit risk model.")
+        if decision.pillar_summary and decision.pillar_summary.get("mode", "").startswith("Dual-Pillar"):
+            with st.container(border=True):
+                st.subheader("Unified Dual-Pillar Credit Evaluation Matrix")
+                col_p1, col_p2, col_q = st.columns(3)
+                col_p1.metric(
+                    "Pillar 1: Statement Affordability",
+                    f"{decision.affordability_score}/100",
+                    decision.pillar_summary.get("affordability_band", ""),
+                )
+                col_p2.metric(
+                    "Pillar 2: Bureau Default Risk",
+                    f"{bureau_prob:.1%}",
+                    decision.pillar_summary.get("bureau_risk_band", ""),
+                    delta_color="inverse",
+                )
+                col_q.metric(
+                    "Matrix Quadrant",
+                    decision.recommendation,
+                    decision.pillar_summary.get("quadrant", ""),
+                )
+        else:
+            decision_columns = st.columns(2, border=True)
+            decision_columns[0].metric("Behavioural affordability score", f"{decision.affordability_score}/100")
+            decision_columns[1].metric("System recommendation", decision.recommendation)
+
+        if st.session_state.get("salary_verification"):
+            sv = st.session_state.salary_verification
+            if sv.is_verified:
+                st.success(f"Cross-document salary verification: {sv.status}")
+            else:
+                st.warning(f"Cross-document salary safeguard: {sv.status} (Declared: ₹{sv.slip_net_salary:,.0f} vs Statement: ₹{sv.detected_statement_salary:,.0f})")
+
+        st.caption(f"Rule version: {decision.rule_version}. Policy safeguards override numerical scores when evidence is contradictory or incomplete.")
         st.subheader("Score components")
         component_table = pd.DataFrame([
             {"Component": component, "Points": f"{points:.1f}"}
@@ -589,10 +662,6 @@ with tab_decision:
                     st.write(f"- {item}")
     for reason in decision.reasons:
         st.write(f"- {reason}")
-    st.info(
-        "The Home Credit model is a separate benchmark evaluated on another dataset. "
-        "It is not applied to raw uploaded statements with incompatible fields."
-    )
 
     st.subheader("Officer final action")
     override = st.selectbox("Officer final action", ["Pending review", "Approve", "Refer for more documents", "Decline"])
@@ -618,6 +687,7 @@ with tab_decision:
             "Requested amount": f"₹{requested_amount:,.0f}",
             "Statement-quality score": f"{quality_score:.0%}" if quality_score is not None else "Not available",
             "Affordability score": f"{decision.affordability_score}/100" if decision.affordability_score is not None else "Not available",
+            "Bureau default risk": f"{bureau_prob:.1%}" if bureau_prob is not None else "Not evaluated",
             "System recommendation": decision.recommendation,
             "Officer action": override,
             "Rule version": decision.rule_version or "Not available",
@@ -652,6 +722,8 @@ with tab_decision:
             "statement_features": st.session_state.features,
             "affordability_score": decision.affordability_score,
             "affordability_components": decision.affordability_components,
+            "model_probability": bureau_prob,
+            "pillar_summary": decision.pillar_summary,
             "system_reasons": decision.reasons,
             "category_overrides": category_override_records(st.session_state.statement),
             "rule_version": decision.rule_version,
@@ -659,4 +731,40 @@ with tab_decision:
             "model_available": Path(MODEL_PATH).exists(),
         }
         record = build_decision_record(base_record, decision, st.session_state.quality_report)
+        saved_meta = save_case_record(record)
+        st.success(
+            f"✅ Decision record cryptographically sealed in SQLite DB! Case ID: `{saved_meta['case_id']}` | "
+            f"SHA-256 Digest: `{saved_meta['record_hash'][:16]}...`"
+        )
         st.download_button("Download decision record", data=pd.Series(record).to_json(indent=2), file_name="decision_record.json", mime="application/json")
+
+    with st.expander("Database Audit Trail & Tamper Verification (SQLite)", expanded=False):
+        col_btn, col_res = st.columns([1, 3])
+        if col_btn.button("Verify Hash Chain"):
+            valid, msg = verify_hash_chain()
+            if valid:
+                col_res.success(f"✅ {msg}")
+            else:
+                col_res.error(f"❌ {msg}")
+        recent_cases = get_case_records(limit=10)
+        if recent_cases:
+            st.caption("Recent sealed case records in SQLite database:")
+            st.dataframe(
+                pd.DataFrame([
+                    {
+                        "Case ID": r["case_id"],
+                        "Timestamp": r["timestamp_utc"][:19] if r["timestamp_utc"] else "-",
+                        "Applicant": r["applicant_id"] or "N/A",
+                        "Requested": f"₹{r['requested_amount']:,.0f}" if r["requested_amount"] else "-",
+                        "Score": f"{r['affordability_score']}/100" if r["affordability_score"] is not None else "-",
+                        "Bureau PD": f"{r['bureau_probability']:.1%}" if r["bureau_probability"] is not None else "-",
+                        "Recommendation": r["system_recommendation"],
+                        "Officer Action": r["officer_action"],
+                        "Record Hash": r["record_hash"][:12] + "...",
+                    }
+                    for r in recent_cases
+                ]),
+                hide_index=True,
+            )
+        else:
+            st.info("No cases sealed in SQLite database yet.")
