@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 import io
+from pathlib import Path
 from typing import BinaryIO
 import re
 
@@ -52,7 +53,11 @@ def _find_column(columns: list[str], canonical: str) -> str | None:
 
 def _read_csv_with_bank_tolerances(uploaded_file: BinaryIO | BytesIO | str) -> pd.DataFrame:
     """Read common bank-export encodings and skip a short non-tabular preamble."""
-    payload = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else None
+    if isinstance(uploaded_file, (str, Path)):
+        with open(uploaded_file, "rb") as f:
+            payload = f.read()
+    else:
+        payload = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else None
     if isinstance(payload, str):
         payload = payload.encode("utf-8")
     attempts = ("utf-8-sig", "utf-16", "cp1252")
