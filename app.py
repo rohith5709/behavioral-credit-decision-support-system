@@ -18,7 +18,7 @@ from src.config import (
     MODEL_PATH,
 )
 from src.decision.engine import recommend
-from src.decision.affordability import POLICY
+from src.decision.affordability import POLICY, calculate_actionable_affordability_metrics
 from src.documents.statement_csv import parse_statement_csv, read_statement_preview, safe_export_csv, suggest_column_mapping
 from src.features.behavioral import (
     apply_bulk_category_override,
@@ -527,6 +527,20 @@ with tab_decision:
                 "Safeguards override the numerical score when evidence is incomplete or contradictory. "
                 "See docs/affordability_policy.md for the complete policy definition."
             )
+        if st.session_state.features:
+            metrics_actionable = calculate_actionable_affordability_metrics(
+                st.session_state.features,
+                loan_tenure_months=int(loan_tenure_months),
+                annual_interest_rate=float(annual_interest_rate),
+            )
+            with st.expander("Actionable loan metrics, stress scenarios & counterfactuals", expanded=True):
+                col_a, col_b = st.columns(2)
+                col_a.metric("Max sustainable EMI", f"₹{metrics_actionable['max_sustainable_monthly_emi']:,.0f}")
+                col_b.metric("Max indicative loan", f"₹{metrics_actionable['max_indicative_loan_amount']:,.0f}")
+                st.caption(f"Stress test (Income -20%, Expense +10%, Rate +2%): Stressed max loan = ₹{metrics_actionable['stressed_max_indicative_loan']:,.0f}")
+                st.subheader("Counterfactual guidance")
+                for item in metrics_actionable["counterfactual_guidance"]:
+                    st.write(f"- {item}")
     for reason in decision.reasons:
         st.write(f"- {reason}")
     st.info(
