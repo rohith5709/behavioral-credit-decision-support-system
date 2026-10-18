@@ -36,94 +36,324 @@ from src.reporting.case_summary import (
     case_status,
     extract_review_flags,
 )
-from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure
+from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure, build_gauge_figure
 from src.models.applicant_scoring import predict_applicant_risk
 from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
 
 # Initialize SQLite database for decision records
 init_db()
 
-st.set_page_config(page_title="Credit Decision Support", page_icon="💳", layout="wide")
+st.set_page_config(page_title="Credit Decision Support | Sound Risk Intelligence", page_icon="🟢", layout="wide")
 
-# Modern FinTech institutional CSS
+# Production-grade Spotify Dark Futuristic Aesthetic CSS
 st.markdown(
     """
     <style>
-    .main .block-container {
-        padding-top: 1.8rem;
-        padding-bottom: 2.5rem;
-        max-width: 1350px;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    .header-badge {
+
+    /* Core Canvas */
+    .stApp {
+        background-color: #0c0c0c;
+        color: #FFFFFF;
+    }
+
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+        max-width: 1380px;
+    }
+
+    /* Spotify Futuristic Navigation Header */
+    .spotify-header {
+        background: linear-gradient(135deg, rgba(29, 185, 84, 0.12) 0%, rgba(18, 18, 18, 0.95) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 1.6rem 2rem;
+        margin-bottom: 1.5rem;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    .spotify-badge {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        background: rgba(59, 130, 246, 0.12);
-        border: 1px solid rgba(59, 130, 246, 0.35);
-        color: #60A5FA;
-        padding: 0.3rem 0.85rem;
-        border-radius: 9999px;
-        font-size: 0.78rem;
-        font-weight: 600;
+        background: rgba(29, 185, 84, 0.15);
+        border: 1px solid rgba(29, 185, 84, 0.4);
+        color: #1DB954;
+        padding: 0.35rem 0.9rem;
+        border-radius: 50px;
+        font-size: 0.72rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.5rem;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.6rem;
     }
-    .matrix-card {
-        padding: 1rem 1.2rem;
-        border-radius: 8px;
-        margin-bottom: 0.75rem;
-        background: rgba(30, 41, 59, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+
+    .spotify-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #FFFFFF;
+        margin: 0;
+        line-height: 1.2;
     }
-    .matrix-card-active {
-        border: 2px solid #38BDF8 !important;
-        background: rgba(56, 189, 248, 0.1) !important;
-        box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+
+    .spotify-subtitle {
+        color: #B3B3B3;
+        font-size: 0.95rem;
+        margin-top: 0.4rem;
+        font-weight: 400;
     }
+
+    /* Spotify Sleek Cards */
+    .spotify-card {
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 1.25rem 1.4rem;
+        margin-bottom: 1rem;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .spotify-card:hover {
+        background: #202020;
+        border-color: rgba(255, 255, 255, 0.15);
+        transform: translateY(-2px);
+    }
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #121212 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #121212;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px !important;
+        color: #B3B3B3 !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        padding: 8px 16px !important;
+        border: none !important;
+        background: transparent !important;
+        transition: all 0.2s ease;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #282828 !important;
+        color: #1DB954 !important;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Custom Status Badges */
     .badge-pill {
         display: inline-block;
-        padding: 0.2rem 0.55rem;
-        border-radius: 4px;
-        font-weight: 600;
-        font-size: 0.75rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: 50px;
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
     }
-    .badge-pill-green { background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; }
-    .badge-pill-amber { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid #F59E0B; }
-    .badge-pill-red { background: rgba(239, 68, 68, 0.2); color: #F87171; border: 1px solid #EF4444; }
-    .badge-pill-blue { background: rgba(59, 130, 246, 0.2); color: #60A5FA; border: 1px solid #3B82F6; }
+
+    .badge-pill-green {
+        background: rgba(29, 185, 84, 0.15);
+        color: #1DB954;
+        border: 1px solid rgba(29, 185, 84, 0.5);
+    }
+
+    .badge-pill-amber {
+        background: rgba(255, 160, 0, 0.15);
+        color: #FFA000;
+        border: 1px solid rgba(255, 160, 0, 0.5);
+    }
+
+    .badge-pill-red {
+        background: rgba(233, 20, 41, 0.15);
+        color: #E91429;
+        border: 1px solid rgba(233, 20, 41, 0.5);
+    }
+
+    .badge-pill-blue {
+        background: rgba(46, 119, 208, 0.15);
+        color: #5799EF;
+        border: 1px solid rgba(46, 119, 208, 0.5);
+    }
+
+    /* 4-Quadrant Cards */
+    .matrix-card {
+        padding: 1.1rem 1.3rem;
+        border-radius: 12px;
+        margin-bottom: 0.85rem;
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        transition: all 0.25s ease;
+    }
+
+    .matrix-card-active {
+        border: 2px solid #1DB954 !important;
+        background: rgba(29, 185, 84, 0.08) !important;
+        box-shadow: 0 0 24px rgba(29, 185, 84, 0.25);
+    }
+
+    /* Streamlit Native Metric Card Overrides */
+    [data-testid="stMetric"] {
+        background-color: #181818 !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 12px !important;
+        padding: 1rem !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+    }
+
+    /* Inputs and Buttons */
+    .stButton>button {
+        background-color: #1DB954 !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+        border-radius: 50px !important;
+        padding: 0.55rem 1.4rem !important;
+        border: none !important;
+        transition: all 0.2s ease !important;
+    }
+
+    .stButton>button:hover {
+        background-color: #1ED760 !important;
+        transform: scale(1.02);
+        box-shadow: 0 4px 20px rgba(29, 185, 84, 0.4) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="header-badge">🛡️ Dual-Pillar Risk Engine • DPDP Act 2023 Compliant • SHA-256 Audit Trail</div>', unsafe_allow_html=True)
-st.title("Behavioral Credit Decision Support System")
-st.caption("A decision-support platform for loan officers. Combines deterministic statement cash-flow affordability with a calibrated LightGBM risk benchmark.")
+st.markdown(
+    """
+    <div class="spotify-header">
+        <div class="spotify-badge">Sound Risk Intelligence · DPDP Act 2023 · SHA-256 Ledger</div>
+        <div class="spotify-title">Behavioral Credit Decision Support System</div>
+        <div class="spotify-subtitle">
+            Dual-Pillar Underwriting Engine: Deterministic Statement Cash Flow (Pillar 1) + LightGBM Risk Benchmark (Pillar 2)
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Demo Personas Catalog for Instant Panel Evaluation
+DEMO_PERSONAS = {
+    "Custom / Manual Entry": None,
+    "Persona 1: Prime Salaried Borrower (Q1 - Approve Target)": {
+        "applicant_id": "APP-PRIME-01",
+        "requested_amount": 300000.0,
+        "loan_tenure_months": 24,
+        "annual_interest_rate": 11.5,
+        "declared_emi": 5000.0,
+        "cibil_score": 780,
+        "applicant_age": 32,
+        "tenure_years": 4.5,
+        "active_loans": 1,
+        "overdue_days": 0,
+    },
+    "Persona 2: Over-Leveraged High Earner (Q2 - Bureau Risk Alert)": {
+        "applicant_id": "APP-LEVERAGED-02",
+        "requested_amount": 600000.0,
+        "loan_tenure_months": 36,
+        "annual_interest_rate": 14.0,
+        "declared_emi": 28000.0,
+        "cibil_score": 620,
+        "applicant_age": 41,
+        "tenure_years": 8.0,
+        "active_loans": 5,
+        "overdue_days": 42,
+    },
+    "Persona 3: Thin-Reserve / High-Spend (Q3 - Cashflow Alert)": {
+        "applicant_id": "APP-THIN-03",
+        "requested_amount": 200000.0,
+        "loan_tenure_months": 18,
+        "annual_interest_rate": 12.5,
+        "declared_emi": 3000.0,
+        "cibil_score": 750,
+        "applicant_age": 25,
+        "tenure_years": 1.5,
+        "active_loans": 1,
+        "overdue_days": 0,
+    },
+    "Persona 4: Discrepant / Elevated Default (Q4 - Decline Target)": {
+        "applicant_id": "APP-DECLINE-04",
+        "requested_amount": 500000.0,
+        "loan_tenure_months": 24,
+        "annual_interest_rate": 16.0,
+        "declared_emi": 22000.0,
+        "cibil_score": 540,
+        "applicant_age": 36,
+        "tenure_years": 0.5,
+        "active_loans": 4,
+        "overdue_days": 85,
+    },
+}
 
 with st.sidebar:
-    st.header("Applicant and request")
-    applicant_id = st.text_input("Applicant ID", placeholder="APP-001")
-    requested_amount = st.number_input("Requested loan amount", min_value=0.0, step=10_000.0)
-    loan_tenure_months = st.number_input("Requested loan tenure (months)", min_value=1, value=24, step=1)
-    annual_interest_rate = st.number_input("Indicative annual interest rate (%)", min_value=0.0, value=12.0, step=0.5)
-    declared_emi = st.number_input("Declared monthly EMI", min_value=0.0, step=1_000.0)
-    officer_name = st.text_input("Reviewing officer", placeholder="Officer name")
-    consent = st.checkbox("Applicant consent for prototype analysis confirmed")
+    st.markdown('<div class="spotify-badge">Underwriting Console</div>', unsafe_allow_html=True)
+    st.header("Applicant & Request")
+    
+    selected_persona_name = st.selectbox(
+        "Load Preset Demo Persona",
+        options=list(DEMO_PERSONAS.keys()),
+        index=0,
+        help="Select a calibrated borrower persona to instantly evaluate dual-pillar matrix response.",
+    )
+    preset = DEMO_PERSONAS.get(selected_persona_name)
+
+    default_app_id = preset["applicant_id"] if preset else "APP-001"
+    default_req_amt = preset["requested_amount"] if preset else 100000.0
+    default_tenure = preset["loan_tenure_months"] if preset else 24
+    default_rate = preset["annual_interest_rate"] if preset else 12.0
+    default_decl_emi = preset["declared_emi"] if preset else 0.0
+
+    applicant_id = st.text_input("Applicant ID", value=default_app_id)
+    requested_amount = st.number_input("Requested loan amount (INR)", min_value=0.0, value=default_req_amt, step=10_000.0)
+    loan_tenure_months = st.number_input("Requested loan tenure (months)", min_value=1, value=default_tenure, step=1)
+    annual_interest_rate = st.number_input("Indicative annual interest rate (%)", min_value=0.0, value=default_rate, step=0.5)
+    declared_emi = st.number_input("Declared monthly EMI (INR)", min_value=0.0, value=default_decl_emi, step=1_000.0)
+    officer_name = st.text_input("Reviewing officer", placeholder="Loan officer name")
+    consent = st.checkbox("Applicant consent for prototype analysis confirmed", value=True)
     monthly_rate = annual_interest_rate / 1200
     proposed_emi = (
         requested_amount / loan_tenure_months
         if monthly_rate == 0 else requested_amount * monthly_rate * (1 + monthly_rate) ** loan_tenure_months / ((1 + monthly_rate) ** loan_tenure_months - 1)
     ) if requested_amount else 0.0
-    st.caption(f"Estimated new EMI: ₹{proposed_emi:,.0f}")
+    st.caption(f"Estimated new EMI: INR {proposed_emi:,.0f}/month")
 
     with st.expander("Applicant Bureau Profile (Pillar 2)", expanded=True):
         enable_bureau = st.checkbox("Enable bureau risk scoring", value=True)
-        cibil_score = st.number_input("CIBIL / Credit Score", min_value=300, max_value=900, value=740, step=10)
-        applicant_age = st.number_input("Applicant Age (years)", min_value=18, max_value=85, value=32, step=1)
-        tenure_years = st.number_input("Employment tenure (years)", min_value=0.0, max_value=45.0, value=4.0, step=0.5)
-        active_loans = st.number_input("Active loans count", min_value=0, max_value=30, value=1, step=1)
-        overdue_days = st.number_input("Past overdue days", min_value=0, max_value=365, value=0, step=1)
+        default_cibil = preset["cibil_score"] if preset else 740
+        default_age = preset["applicant_age"] if preset else 32
+        default_emp = preset["tenure_years"] if preset else 4.0
+        default_active = preset["active_loans"] if preset else 1
+        default_overdue = preset["overdue_days"] if preset else 0
+
+        cibil_score = st.number_input("CIBIL / Credit Score", min_value=300, max_value=900, value=default_cibil, step=10)
+        applicant_age = st.number_input("Applicant Age (years)", min_value=18, max_value=85, value=default_age, step=1)
+        tenure_years = st.number_input("Employment tenure (years)", min_value=0.0, max_value=45.0, value=default_emp, step=0.5)
+        active_loans = st.number_input("Active loans count", min_value=0, max_value=30, value=default_active, step=1)
+        overdue_days = st.number_input("Past overdue days", min_value=0, max_value=365, value=default_overdue, step=1)
 
         bureau_profile = {
             "cibil_score": cibil_score,
@@ -215,16 +445,59 @@ with tab_summary:
         decision = recommend(None, st.session_state.features, quality_report=st.session_state.quality_report)
         quality = st.session_state.quality_report
         visual_status, status_message = case_status(decision.recommendation)
+
+        # Futuristic Gauge Cluster (Spotify Green theme)
+        gauge_col1, gauge_col2, gauge_col3 = st.columns([1, 1, 1.2])
+        with gauge_col1:
+            fig_aff = build_gauge_figure(
+                value=float(decision.affordability_score or 0.0),
+                title="Affordability Score",
+                max_value=100.0,
+                threshold_low=45.0,
+                threshold_high=70.0,
+                suffix=" / 100",
+            )
+            st.plotly_chart(fig_aff, use_container_width=True)
+        with gauge_col2:
+            fig_q = build_gauge_figure(
+                value=float((quality.score or 0.0) * 100.0),
+                title="Data Quality Integrity",
+                max_value=100.0,
+                threshold_low=60.0,
+                threshold_high=80.0,
+                suffix="%",
+            )
+            st.plotly_chart(fig_q, use_container_width=True)
+        with gauge_col3:
+            rec_badge_class = (
+                "badge-pill-green" if "Meets" in decision.recommendation
+                else "badge-pill-amber" if "Review" in decision.recommendation or "Refer" in decision.recommendation
+                else "badge-pill-red"
+            )
+            st.markdown(
+                f"""
+                <div class="spotify-card" style="height: 190px; display:flex; flex-direction:column; justify-content:center;">
+                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:#B3B3B3; margin-bottom:6px;">
+                        System Recommendation
+                    </div>
+                    <div>
+                        <span class="badge-pill {rec_badge_class}" style="font-size:0.9rem; padding: 0.4rem 0.9rem;">
+                            {decision.recommendation}
+                        </span>
+                    </div>
+                    <div style="font-size:0.83rem; color:#B3B3B3; margin-top:10px; line-height:1.4;">
+                        {status_message}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         with st.container(horizontal=True):
-            st.metric("Data quality", f"{quality.score:.0%}", help="Completeness and consistency of the uploaded statement.", border=True)
-            st.metric("Affordability score", f"{decision.affordability_score}/100", help="Transparent rule-based statement assessment.", border=True)
-            st.metric("Recommendation", decision.recommendation, help="Officer-support recommendation, never a final lending decision.", border=True)
-        with st.container(horizontal=True):
-            st.metric("Before new loan surplus", f"₹{st.session_state.features['monthly_surplus']:,.0f}", border=True)
-            st.metric("Estimated new EMI", f"₹{proposed_emi:,.0f}", border=True)
-            st.metric("After new loan surplus", f"₹{st.session_state.features['post_loan_monthly_surplus']:,.0f}", border=True)
-        st.subheader(f"{visual_status} status: {decision.recommendation}")
-        st.caption(status_message)
+            st.metric("Before new loan surplus", f"INR {st.session_state.features['monthly_surplus']:,.0f}", border=True)
+            st.metric("Estimated new EMI", f"INR {proposed_emi:,.0f}", border=True)
+            st.metric("After new loan surplus", f"INR {st.session_state.features['post_loan_monthly_surplus']:,.0f}", border=True)
+        
         review_flags = extract_review_flags(decision.reasons)
         with st.container(border=True):
             st.subheader("Officer review checklist")
@@ -927,9 +1200,19 @@ with tab_decision:
         }
         record = build_decision_record(base_record, decision, st.session_state.quality_report)
         saved_meta = save_case_record(record)
-        st.success(
-            f"✅ Decision record cryptographically sealed in SQLite DB! Case ID: `{saved_meta['case_id']}` | "
-            f"SHA-256 Digest: `{saved_meta['record_hash'][:16]}...`"
+        st.markdown(
+            f"""
+            <div class="spotify-card" style="border-left: 4px solid #1DB954; margin-top: 1rem;">
+                <div style="display:flex; align-items:center; gap: 0.5rem; margin-bottom: 4px;">
+                    <span class="badge-pill badge-pill-green">Cryptographically Sealed</span>
+                    <span style="font-weight:700; color:#FFFFFF;">Case ID: {saved_meta['case_id']}</span>
+                </div>
+                <div style="font-family: monospace; font-size: 0.8rem; color: #B3B3B3;">
+                    SHA-256 Digest: {saved_meta['record_hash'][:24]}... (Anchored to HEAD_HASH)
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
         st.download_button("Download decision record", data=pd.Series(record).to_json(indent=2), file_name="decision_record.json", mime="application/json")
 
@@ -938,9 +1221,9 @@ with tab_decision:
         if col_btn.button("Verify Hash Chain"):
             valid, msg = verify_hash_chain()
             if valid:
-                col_res.success(f"✅ {msg}")
+                col_res.markdown(f'<span class="badge-pill badge-pill-green">Chain Verified</span> {msg}', unsafe_allow_html=True)
             else:
-                col_res.error(f"❌ {msg}")
+                col_res.markdown(f'<span class="badge-pill badge-pill-red">Tamper Detected</span> {msg}', unsafe_allow_html=True)
         recent_cases = get_case_records(limit=10)
         if recent_cases:
             st.caption("Recent sealed case records in SQLite database:")
@@ -950,7 +1233,7 @@ with tab_decision:
                         "Case ID": r["case_id"],
                         "Timestamp": r["timestamp_utc"][:19] if r["timestamp_utc"] else "-",
                         "Applicant": r["applicant_id"] or "N/A",
-                        "Requested": f"₹{r['requested_amount']:,.0f}" if r["requested_amount"] else "-",
+                        "Requested": f"INR {r['requested_amount']:,.0f}" if r["requested_amount"] else "-",
                         "Score": f"{r['affordability_score']}/100" if r["affordability_score"] is not None else "-",
                         "Bureau PD": f"{r['bureau_probability']:.1%}" if r["bureau_probability"] is not None else "-",
                         "Recommendation": r["system_recommendation"],

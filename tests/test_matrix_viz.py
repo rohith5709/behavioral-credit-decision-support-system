@@ -1,6 +1,6 @@
 """Tests for matrix visualization module."""
 import plotly.graph_objects as go
-from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure
+from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure, build_gauge_figure
 
 
 def test_build_decision_matrix_figure():
@@ -36,3 +36,11 @@ def test_build_shap_horizontal_bar_figure():
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
     assert len(fig.data[0].x) == 2
+
+
+def test_build_gauge_figure():
+    fig = build_gauge_figure(value=82.0, title="Affordability Score", max_value=100.0)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
+    assert fig.data[0].value == 82.0
+

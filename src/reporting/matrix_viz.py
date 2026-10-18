@@ -135,25 +135,25 @@ def build_decision_matrix_figure(
     fig.update_layout(
         title=dict(
             text="<b>Dual-Pillar Credit Evaluation Matrix</b> (Interactive 2D Risk Map)",
-            font=dict(size=14, color="#E2E8F0"),
+            font=dict(size=14, color="#FFFFFF"),
         ),
         xaxis=dict(
             title="Pillar 1: Statement Affordability Score (0 – 100)",
             range=[0, 100],
-            gridcolor="rgba(148, 163, 184, 0.1)",
+            gridcolor="rgba(255, 255, 255, 0.05)",
             zeroline=False,
-            color="#94A3B8",
+            color="#B3B3B3",
         ),
         yaxis=dict(
             title="Pillar 2: Calibrated Bureau Default Probability (0% – 40%)",
             range=[0, 0.40],
             tickformat=".0%",
-            gridcolor="rgba(148, 163, 184, 0.1)",
+            gridcolor="rgba(255, 255, 255, 0.05)",
             zeroline=False,
-            color="#94A3B8",
+            color="#B3B3B3",
         ),
-        plot_bgcolor="#0F172A",
-        paper_bgcolor="#0F172A",
+        plot_bgcolor="#121212",
+        paper_bgcolor="#121212",
         margin=dict(l=40, r=40, t=50, b=40),
         height=380,
         showlegend=False,
@@ -162,8 +162,57 @@ def build_decision_matrix_figure(
     return fig
 
 
+def build_gauge_figure(
+    value: float,
+    title: str,
+    max_value: float = 100.0,
+    threshold_low: float = 45.0,
+    threshold_high: float = 70.0,
+    suffix: str = "",
+) -> go.Figure:
+    """Generate a sleek futuristic radial gauge indicator in Spotify green styling."""
+    if value >= threshold_high:
+        bar_color = "#1DB954"  # Spotify Green
+    elif value >= threshold_low:
+        bar_color = "#FFA000"  # Amber
+    else:
+        bar_color = "#E91429"  # Crimson
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        number=dict(suffix=suffix, font=dict(color="#FFFFFF", size=28, family="CircularStd, Inter, sans-serif")),
+        title=dict(text=f"<b>{title}</b>", font=dict(color="#B3B3B3", size=13)),
+        gauge=dict(
+            axis=dict(range=[0, max_value], tickcolor="#535353", tickfont=dict(color="#B3B3B3", size=10)),
+            bar=dict(color=bar_color, thickness=0.8),
+            bgcolor="#282828",
+            borderwidth=1,
+            bordercolor="rgba(255, 255, 255, 0.05)",
+            steps=[
+                dict(range=[0, threshold_low], color="rgba(233, 20, 41, 0.15)"),
+                dict(range=[threshold_low, threshold_high], color="rgba(255, 160, 0, 0.15)"),
+                dict(range=[threshold_high, max_value], color="rgba(29, 185, 84, 0.15)"),
+            ],
+            threshold=dict(
+                line=dict(color="#FFFFFF", width=2),
+                thickness=0.85,
+                value=value,
+            ),
+        ),
+    ))
+
+    fig.update_layout(
+        paper_bgcolor="#181818",
+        plot_bgcolor="#181818",
+        margin=dict(l=20, r=20, t=35, b=20),
+        height=190,
+    )
+    return fig
+
+
 def build_shap_horizontal_bar_figure(local_explanations: dict[str, Any]) -> go.Figure:
-    """Generate a horizontal bar chart visualizing Tree-SHAP local attributions."""
+    """Generate a horizontal bar chart visualizing Tree-SHAP local attributions in Spotify style."""
     risk_factors = local_explanations.get("top_risk_increasing_factors", [])
     protective_factors = local_explanations.get("top_risk_decreasing_factors", [])
 
@@ -173,23 +222,23 @@ def build_shap_horizontal_bar_figure(local_explanations: dict[str, Any]) -> go.F
             "name": r["feature"],
             "val": r["shap_value"],
             "type": "Risk-Increasing (+)",
-            "color": "#EF4444",
+            "color": "#E91429",
         })
     for p in protective_factors:
         items.append({
             "name": p["feature"],
             "val": p["shap_value"],
             "type": "Protective Buffer (-)",
-            "color": "#10B981",
+            "color": "#1DB954",
         })
 
     if not items:
         fig = go.Figure()
         fig.update_layout(
             title="No significant feature deviations detected.",
-            paper_bgcolor="#0F172A",
-            plot_bgcolor="#0F172A",
-            font=dict(color="#94A3B8"),
+            paper_bgcolor="#121212",
+            plot_bgcolor="#121212",
+            font=dict(color="#B3B3B3"),
             height=260,
         )
         return fig
@@ -200,28 +249,28 @@ def build_shap_horizontal_bar_figure(local_explanations: dict[str, Any]) -> go.F
         x=df["val"],
         y=df["name"],
         orientation="h",
-        marker=dict(color=df["color"].tolist(), line=dict(color="rgba(255,255,255,0.2)", width=1)),
+        marker=dict(color=df["color"].tolist(), line=dict(color="rgba(255,255,255,0.15)", width=1)),
         hovertemplate="<b>%{y}</b><br>Tree-SHAP Impact: %{x:+.4f} default log-odds<extra></extra>",
     ))
 
-    fig.add_vline(x=0, line_width=1.5, line_color="#94A3B8")
+    fig.add_vline(x=0, line_width=1.5, line_color="#535353")
 
     fig.update_layout(
         title=dict(
             text="<b>Tree-SHAP Feature Attributions</b> (Log-Odds Impact on Benchmark Default Risk)",
-            font=dict(size=13, color="#E2E8F0"),
+            font=dict(size=13, color="#FFFFFF"),
         ),
         xaxis=dict(
             title="Shapley Value (Log-Odds Contribution)",
-            gridcolor="rgba(148, 163, 184, 0.15)",
-            color="#94A3B8",
+            gridcolor="rgba(255, 255, 255, 0.05)",
+            color="#B3B3B3",
             zeroline=False,
         ),
         yaxis=dict(
-            color="#CBD5E1",
+            color="#EAEAEA",
         ),
-        plot_bgcolor="#0F172A",
-        paper_bgcolor="#0F172A",
+        plot_bgcolor="#121212",
+        paper_bgcolor="#121212",
         margin=dict(l=20, r=20, t=40, b=30),
         height=300,
     )
