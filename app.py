@@ -487,9 +487,29 @@ with tab_validation:
         importance_path = Path("reports/home_credit_global_importance.json")
         if importance_path.exists():
             importance = pd.DataFrame(json.loads(importance_path.read_text(encoding="utf-8")))
-            st.subheader("Main drivers in the trained model")
+            st.subheader("Global feature importance (Tree gain)")
             st.bar_chart(importance, x="feature", y="gain_importance")
             st.caption("Gain importance shows which credit-history and repayment features contributed most across the model. It is a global explanation, not an individual lending decision explanation.")
+
+            from src.models.explain_home_credit import explain_local_factors
+            st.subheader("Explainable risk factor attribution (Local drivers)")
+            st.caption("Example attribution demonstrating top risk-increasing and protective factors translated into accessible business terms.")
+            mock_applicant = {
+                "EXT_SOURCE_3": 0.28,
+                "EXT_SOURCE_2": 0.42,
+                "DAYS_EMPLOYED": -650,
+                "installment_days_late": 4.0,
+            }
+            local_exp = explain_local_factors(mock_applicant)
+            c_risk, c_prot = st.columns(2)
+            with c_risk:
+                st.markdown("**Top risk-increasing factors:**")
+                for r in local_exp["top_risk_increasing_factors"]:
+                    st.write(f"- :red[{r['feature']}]: {r['impact']}")
+            with c_prot:
+                st.markdown("**Top protective factors:**")
+                for p in local_exp["top_risk_decreasing_factors"]:
+                    st.write(f"- :green[{p['feature']}]: {p['impact']}")
 
 with tab_decision:
     st.subheader("Indicative assessment and officer review")
