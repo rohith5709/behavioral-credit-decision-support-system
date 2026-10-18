@@ -556,8 +556,8 @@ with tab_validation:
             st.caption("Gain importance shows which credit-history and repayment features contributed most across the model. It is a global explanation, not an individual lending decision explanation.")
 
             from src.models.explain_home_credit import explain_local_factors
-            st.subheader("Explainable risk factor attribution (Local drivers)")
-            st.caption("Example attribution demonstrating top risk-increasing and protective factors translated into accessible business terms.")
+            st.subheader("Explainable risk factor attribution (Exact Tree-SHAP)")
+            st.caption("Path-dependent Shapley values computed via LightGBM booster. Features with positive SHAP push predicted risk higher, while negative values act as protective buffers.")
             mock_applicant = {
                 "EXT_SOURCE_3": 0.28,
                 "EXT_SOURCE_2": 0.42,
@@ -567,11 +567,11 @@ with tab_validation:
             local_exp = explain_local_factors(mock_applicant)
             c_risk, c_prot = st.columns(2)
             with c_risk:
-                st.markdown("**Top risk-increasing factors:**")
+                st.markdown("**Top risk-increasing drivers (Positive SHAP):**")
                 for r in local_exp["top_risk_increasing_factors"]:
                     st.write(f"- :red[{r['feature']}]: {r['impact']}")
             with c_prot:
-                st.markdown("**Top protective factors:**")
+                st.markdown("**Top protective factors (Negative SHAP):**")
                 for p in local_exp["top_risk_decreasing_factors"]:
                     st.write(f"- :green[{p['feature']}]: {p['impact']}")
 
@@ -583,6 +583,11 @@ with tab_decision:
         st.session_state.bureau_result["model_probability"]
         if st.session_state.get("bureau_result") is not None
         else None
+    )
+    completeness_pct = (
+        st.session_state.bureau_result.get("input_completeness_percent", "N/A")
+        if st.session_state.get("bureau_result") is not None
+        else "N/A"
     )
     decision = recommend(
         model_probability=bureau_prob,
@@ -606,7 +611,7 @@ with tab_decision:
                 col_p2.metric(
                     "Pillar 2: Bureau Default Risk",
                     f"{bureau_prob:.1%}",
-                    decision.pillar_summary.get("bureau_risk_band", ""),
+                    f"{decision.pillar_summary.get('bureau_risk_band', '')} (Input Completeness: {completeness_pct})",
                     delta_color="inverse",
                 )
                 col_q.metric(

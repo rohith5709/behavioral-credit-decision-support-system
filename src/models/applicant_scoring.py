@@ -123,7 +123,16 @@ def predict_applicant_risk(
         else "Below review alert threshold (acceptable risk)"
     )
 
-    # Calculate local explanations
+    # Calculate feature completeness: how many core underwriting drivers were directly supplied by officer vs median-imputed
+    core_underwriting_fields = [
+        "cibil_score", "age_years", "years_employed", "active_loans_count",
+        "overdue_days", "requested_amount", "monthly_emi", "annual_income", "monthly_income"
+    ]
+    supplied_count = sum(1 for k in core_underwriting_fields if bureau_profile.get(k) is not None)
+    total_core = len(core_underwriting_fields) - 1 # monthly/annual income is alternative
+    completeness_ratio = round(min(1.0, supplied_count / total_core), 2)
+
+    # Calculate local Tree-SHAP explanations
     features_for_explanation = {
         k: v for k, v in row.items() if v is not None and not (isinstance(v, float) and np.isnan(v))
     }
@@ -135,6 +144,11 @@ def predict_applicant_risk(
         "threshold": threshold,
         "is_above_threshold": pred_prob >= threshold,
         "threshold_verdict": threshold_verdict,
+        "input_completeness_ratio": completeness_ratio,
+        "input_completeness_percent": f"{completeness_ratio:.0%}",
+        "supplied_fields_count": supplied_count,
+        "imputed_features_count": len(features_list) - len(features_for_explanation),
         "local_explanations": explanations,
         "bureau_profile_features": features_for_explanation,
     }
+

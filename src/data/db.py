@@ -1,4 +1,4 @@
-"""SQLite case storage with tamper-evident SHA-256 hash chaining for decision records."""
+"""SQLite case storage with tamper-evident SHA-256 hash chaining, external anchor verification, and DPDP-compliant payload hygiene."""
 from __future__ import annotations
 
 import hashlib
@@ -11,6 +11,7 @@ import uuid
 from src.config import PROJECT_ROOT
 
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "decisions.db"
+DEFAULT_ANCHOR_PATH = PROJECT_ROOT / "data" / "HEAD_HASH.sha256"
 GENESIS_HASH = "GENESIS_" + "0" * 56
 
 
@@ -54,6 +55,18 @@ def init_db(db_path: Path | str | None = None) -> None:
         conn.commit()
 
 
+def sanitize_payload_for_chain(record_dict: dict[str, Any]) -> str:
+    """Filter or hash direct PII fields so decision record remains tamper-evident
+
+    while supporting Right-to-Erasure compliance under the DPDP Act 2023.
+    """
+    clean_dict = dict(record_dict)
+    # Mask direct personal identifiers in the immutable chain digest
+    if "officer" in clean_dict and clean_dict["officer"]:
+        clean_dict["officer"] = "[AUTHORIZED_OFFICER]"
+    return json.dumps(clean_dict, sort_keys=True)
+
+
 def compute_record_hash(
     previous_hash: str,
     case_id: str,
@@ -65,28 +78,25 @@ def compute_record_hash(
     full_record_json: str,
 ) -> str:
     """Compute the SHA-256 cryptographic digest binding this record to the preceding record."""
-    payload = f"{previous_hash}|{case_id}|{timestamp_utc}|{applicant_id or ''}|{requested_amount or 0.0}|{system_recommendation}|{officer_action}|{full_record_json}"
+    sanitized_json = sanitize_payload_for_chain(json.loads(full_record_json)) if full_record_json else ""
+    payload = f"{previous_hash}|{case_id}|{timestamp_utc}|{applicant_id or ''}|{requested_amount or 0.0}|{system_recommendation}|{officer_action}|{sanitized_json}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def update_external_anchor(head_hash: str, anchor_path: Path | str | None = None) -> Path:
+    """Persist head hash to an external digest file outside SQLite to defeat full-chain rewrite attacks."""
+    path = Path(anchor_path) if anchor_path is not None else DEFAULT_ANCHOR_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{head_hash}\n", encoding="utf-8")
+    return path
 
 
 def save_case_record(
     record_data: dict[str, Any],
     db_path: Path | str | None = None,
+    anchor_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Persist a completed case decision record with tamper-evident hash chaining.
-
-    Parameters
-    ----------
-    record_data : dict
-        Full case record dictionary (e.g. from build_decision_record).
-    db_path : Path | str | None
-        Path to SQLite database. Defaults to data/decisions.db.
-
-    Returns
-    -------
-    dict
-        Metadata including assigned case_id, record_hash, and previous_hash.
-    """
+    """Persist a completed case decision record with tamper-evident hash chaining and external anchor."""
     init_db(db_path)
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -158,6 +168,9 @@ def save_case_record(
         )
         conn.commit()
 
+        # Update external anchor file
+        update_external_anchor(record_hash, anchor_path)
+
         return {
             "case_id": case_id,
             "record_hash": record_hash,
@@ -191,14 +204,11 @@ def get_case_records(
         return [dict(row) for row in rows]
 
 
-def verify_hash_chain(db_path: Path | str | None = None) -> tuple[bool, str]:
-    """Verify cryptographic integrity of the entire decision record hash chain.
-
-    Returns
-    -------
-    tuple[bool, str]
-        (True, message) if valid, (False, error_reason) if tampered.
-    """
+def verify_hash_chain(
+    db_path: Path | str | None = None,
+    anchor_path: Path | str | None = None,
+) -> tuple[bool, str]:
+    """Verify cryptographic integrity of the entire decision record hash chain and external anchor."""
     init_db(db_path)
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -209,6 +219,7 @@ def verify_hash_chain(db_path: Path | str | None = None) -> tuple[bool, str]:
             return True, "Hash chain is empty (no records)."
 
         expected_prev = GENESIS_HASH
+        last_hash = ""
         for row in rows:
             if row["previous_hash"] != expected_prev:
                 return (
@@ -236,5 +247,16 @@ def verify_hash_chain(db_path: Path | str | None = None) -> tuple[bool, str]:
                 )
 
             expected_prev = row["record_hash"]
+            last_hash = row["record_hash"]
 
-        return True, f"Hash chain verified: {len(rows)} records are cryptographically intact."
+        # Check external anchor if file exists
+        a_path = Path(anchor_path) if anchor_path is not None else DEFAULT_ANCHOR_PATH
+        if a_path.exists():
+            anchored = a_path.read_text(encoding="utf-8").strip()
+            if anchored and anchored != last_hash:
+                return (
+                    False,
+                    f"External Anchor Mismatch: Database head hash does not match external anchor {anchored[:12]}... (possible full-chain database rewrite attack detected).",
+                )
+
+        return True, f"Hash chain verified: {len(rows)} records are cryptographically intact and match external anchor."

@@ -13,13 +13,18 @@ def temp_db(tmp_path):
     return db_file
 
 
-def test_db_init_and_empty_verification(temp_db):
-    valid, message = verify_hash_chain(temp_db)
+@pytest.fixture
+def temp_anchor(tmp_path):
+    return tmp_path / "test_HEAD_HASH.sha256"
+
+
+def test_db_init_and_empty_verification(temp_db, temp_anchor):
+    valid, message = verify_hash_chain(temp_db, temp_anchor)
     assert valid is True
     assert "empty" in message
 
 
-def test_db_save_and_retrieve_record(temp_db):
+def test_db_save_and_retrieve_record(temp_db, temp_anchor):
     record = {
         "timestamp_utc": "2026-10-18T12:00:00Z",
         "applicant_id": "APP-TEST-001",
@@ -33,7 +38,7 @@ def test_db_save_and_retrieve_record(temp_db):
         "officer": "Officer Sharma",
         "officer_rationale": "Strong verified salary and pristine credit history.",
     }
-    saved_meta = save_case_record(record, temp_db)
+    saved_meta = save_case_record(record, temp_db, temp_anchor)
     assert saved_meta["case_id"].startswith("CASE-")
     assert saved_meta["previous_hash"] == GENESIS_HASH
     assert len(saved_meta["record_hash"]) == 64
@@ -52,12 +57,13 @@ def test_db_save_and_retrieve_record(temp_db):
         "officer": "Officer Sharma",
         "officer_rationale": "High existing debt and frequent late payments.",
     }
-    saved_meta2 = save_case_record(record2, temp_db)
+    saved_meta2 = save_case_record(record2, temp_db, temp_anchor)
     assert saved_meta2["previous_hash"] == saved_meta["record_hash"]
 
     # Verify chain
-    valid, message = verify_hash_chain(temp_db)
+    valid, message = verify_hash_chain(temp_db, temp_anchor)
     assert valid is True
+
     assert "2 records are cryptographically intact" in message
 
     # Retrieve rows
@@ -67,7 +73,7 @@ def test_db_save_and_retrieve_record(temp_db):
     assert records[1]["case_id"] == saved_meta["case_id"]
 
 
-def test_db_tamper_detection(temp_db):
+def test_db_tamper_detection(temp_db, temp_anchor):
     record = {
         "timestamp_utc": "2026-10-18T12:00:00Z",
         "applicant_id": "APP-TAMPER-001",
@@ -75,10 +81,10 @@ def test_db_tamper_detection(temp_db):
         "system_recommendation": "Meets indicative affordability criteria",
         "officer_action": "Approve",
     }
-    saved = save_case_record(record, temp_db)
+    saved = save_case_record(record, temp_db, temp_anchor)
 
     # Legitimate state is valid
-    valid, _ = verify_hash_chain(temp_db)
+    valid, _ = verify_hash_chain(temp_db, temp_anchor)
     assert valid is True
 
     # Maliciously mutate the saved record directly in SQLite
@@ -88,6 +94,7 @@ def test_db_tamper_detection(temp_db):
     conn.close()
 
     # Integrity verification must catch the tampering
-    tamper_valid, tamper_msg = verify_hash_chain(temp_db)
+    tamper_valid, tamper_msg = verify_hash_chain(temp_db, temp_anchor)
     assert tamper_valid is False
     assert "Tamper detected" in tamper_msg
+
