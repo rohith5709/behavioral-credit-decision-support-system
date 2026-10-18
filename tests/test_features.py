@@ -143,6 +143,21 @@ def test_merchant_aliases_and_extended_categories_are_classified():
     ]
 
 
+def test_multilingual_and_self_transfer_categorisation():
+    transactions = pd.DataFrame({
+        "date": ["2026-01-01"] * 5,
+        "description": [
+            "SELF TRANSFER TO SAVINGS", "PAYTM WALLET TOPUP", "MONTHLY TANKHAH", "BIJLI BILL PAYMENT", "KIRANA STORE",
+        ],
+        "credit": [0, 0, 45_000, 0, 0],
+        "debit": [10_000, 2_000, 0, 1_400, 1_100],
+    })
+    result = categorise_statement_transactions(transactions)
+    assert result["category"].tolist() == [
+        "Transfer/other inflow", "Transfer/other inflow", "Salary/income", "Utilities", "Groceries",
+    ]
+
+
 def test_balance_features_use_daily_forward_filled_balance_and_withhold_partial_trends():
     transactions = pd.DataFrame({
         "date": ["2026-01-10", "2026-01-11", "2026-02-01", "2026-03-31"],
