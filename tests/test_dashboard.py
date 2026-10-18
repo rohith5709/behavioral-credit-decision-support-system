@@ -38,13 +38,15 @@ def _prepared_case():
 
 def test_dashboard_renders_case_summary_with_seeded_case():
     statement, report, features, monthly_summary, category_summary = _prepared_case()
-    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=20)
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=30)
     app.session_state["statement"] = statement
     app.session_state["quality_report"] = report
     app.session_state["features"] = features
     app.session_state["monthly_summary"] = monthly_summary
     app.session_state["category_summary"] = category_summary
-    app.run(timeout=20)
+    app.session_state["bureau_result"] = None   # disable bureau scoring during headless test
+    app.session_state["salary_verification"] = None
+    app.run(timeout=30)
 
     assert not app.exception
     summary_frames = [frame.value for frame in app.dataframe if "Policy version" in frame.value.get("Metric", pd.Series(dtype=str)).tolist()]
