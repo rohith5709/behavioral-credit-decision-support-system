@@ -1,6 +1,4 @@
-"""Explainability utilities for Home Credit benchmark model using native Tree-SHAP and global gain importance."""
-from __future__ import annotations
-
+from functools import lru_cache
 import json
 from typing import Any
 
@@ -9,6 +7,11 @@ import numpy as np
 import pandas as pd
 
 from src.config import HOME_CREDIT_MODEL_PATH, REPORT_DIR
+
+
+@lru_cache(maxsize=1)
+def _get_cached_bundle(model_path: str = str(HOME_CREDIT_MODEL_PATH)) -> dict[str, Any]:
+    return joblib.load(model_path)
 
 
 FEATURE_DESCRIPTIONS: dict[str, str] = {
@@ -32,7 +35,7 @@ FEATURE_DESCRIPTIONS: dict[str, str] = {
 
 def export_global_importance(top_n: int = 15) -> pd.DataFrame:
     """Save LightGBM gain importance for the model-validation dashboard/report."""
-    model_bundle = joblib.load(HOME_CREDIT_MODEL_PATH)
+    model_bundle = _get_cached_bundle(str(HOME_CREDIT_MODEL_PATH))
     values = model_bundle["classifier"].booster_.feature_importance(importance_type="gain")
     report = (
         pd.DataFrame({"feature": model_bundle["features"], "gain_importance": values})
@@ -66,7 +69,7 @@ def calculate_tree_shap_attributions(
     dict[str, Any]
         Exact Shapley values, base value, and ranked drivers in log-odds space.
     """
-    model_bundle = joblib.load(HOME_CREDIT_MODEL_PATH)
+    model_bundle = _get_cached_bundle(str(HOME_CREDIT_MODEL_PATH))
     booster = model_bundle["classifier"].booster_
 
     # predict with pred_contrib=True returns (1, n_features + 1) where last col is base value (expected value)
@@ -119,7 +122,7 @@ def explain_local_factors(
 
     with descriptive fallback for partial inputs.
     """
-    model_bundle = joblib.load(HOME_CREDIT_MODEL_PATH)
+    model_bundle = _get_cached_bundle(str(HOME_CREDIT_MODEL_PATH))
     features = model_bundle["features"]
     imputer = model_bundle["imputer"]
 

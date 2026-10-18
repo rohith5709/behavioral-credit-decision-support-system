@@ -1,6 +1,7 @@
 """Single-applicant bureau risk scoring using the trained Home Credit LightGBM benchmark model."""
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 import joblib
@@ -11,8 +12,9 @@ from src.config import HOME_CREDIT_MODEL_PATH, LOW_RISK_THRESHOLD, HIGH_RISK_THR
 from src.models.explain_home_credit import explain_local_factors
 
 
-def load_bureau_model(model_path: Path | str = HOME_CREDIT_MODEL_PATH) -> dict[str, Any]:
-    """Load the trained Home Credit model bundle."""
+@lru_cache(maxsize=1)
+def load_bureau_model(model_path: str = str(HOME_CREDIT_MODEL_PATH)) -> dict[str, Any]:
+    """Load and memory-cache the trained Home Credit model bundle."""
     path = Path(model_path)
     if not path.exists():
         raise FileNotFoundError(f"Home Credit model not found at {path}")
@@ -39,7 +41,7 @@ def predict_applicant_risk(
         - monthly_emi: float (mapped to AMT_ANNUITY)
         - annual_income: float (mapped to AMT_INCOME_TOTAL)
     """
-    bundle = load_bureau_model(model_path)
+    bundle = load_bureau_model(str(model_path))
     features_list = bundle["features"]
     imputer = bundle["imputer"]
     scaler = bundle.get("scaler")

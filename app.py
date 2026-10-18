@@ -501,11 +501,9 @@ with tab_validation:
             "(lower indicates better probability accuracy)."
         )
         st.caption(
-            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
+            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements. "
             f"Final test set: {protocol.get('test_rows', final_test.get('test_rows', 'Not available')):,} held-out applicants. "
-            "Model, calibration, and threshold were selected on separate training/validation data. "
-            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
-            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements."
+            "Model, calibration, and threshold were selected on separate training/validation data."
         )
         if HOME_CREDIT_COMPARISON_PATH.exists():
             comparison = load_metrics(
@@ -558,13 +556,21 @@ with tab_validation:
             from src.models.explain_home_credit import explain_local_factors
             st.subheader("Explainable risk factor attribution (Exact Tree-SHAP)")
             st.caption("Path-dependent Shapley values computed via LightGBM booster. Features with positive SHAP push predicted risk higher, while negative values act as protective buffers.")
-            mock_applicant = {
-                "EXT_SOURCE_3": 0.28,
-                "EXT_SOURCE_2": 0.42,
-                "DAYS_EMPLOYED": -650,
-                "installment_days_late": 4.0,
-            }
-            local_exp = explain_local_factors(mock_applicant)
+            
+            # Reuse pre-computed Tree-SHAP attributions from the active applicant bureau scoring if available
+            if st.session_state.get("bureau_result") and "local_explanations" in st.session_state.bureau_result:
+                local_exp = st.session_state.bureau_result["local_explanations"]
+                st.info(f"Displaying Tree-SHAP attributions for the active applicant profile (CIBIL: {cibil_score}, Age: {applicant_age}).")
+            else:
+                mock_applicant = {
+                    "EXT_SOURCE_3": 0.28,
+                    "EXT_SOURCE_2": 0.42,
+                    "DAYS_EMPLOYED": -650,
+                    "installment_days_late": 4.0,
+                }
+                local_exp = explain_local_factors(mock_applicant)
+                st.caption("Displaying Tree-SHAP attributions for reference applicant persona.")
+
             c_risk, c_prot = st.columns(2)
             with c_risk:
                 st.markdown("**Top risk-increasing drivers (Positive SHAP):**")
