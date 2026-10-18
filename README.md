@@ -1,24 +1,55 @@
 # Behavioral Credit Decision Support System
 
-A human-in-the-loop CSV bank-statement affordability-evidence prototype. It derives transparent transaction indicators, presents a separate default-risk ML benchmark, and supports officer review; it does not make lending decisions.
+> **B.Tech BCSE497J – Project I · VIT**  
+> Team: Adharsh S (23BDS0029) · Gowtham Kumar D (23BDS0186) · Rohith S M (23BDS0025)  
+> Faculty Guide: Dr. Viswanathan A
 
-## What is included
+A **Dual-Pillar human-in-the-loop credit decision support platform** for bank loan officers. It combines a deterministic statement cash-flow affordability engine with a calibrated LightGBM default-risk benchmark, unified through a 2×2 decision matrix with SHA-256 tamper-evident audit trails (DPDP Act 2023 compliant). It does not make lending decisions.
 
-- UCI Credit Card Default data loader and baseline training pipeline.
-- Behavioural features from six months of bill, payment, and repayment-status history.
-- CSV bank-statement parser with automatic aliases, officer column mapping, signed-amount support, duplicate detection, balance-transition checks, and data-quality checks.
-- Transparent transaction categorisation for salary, rent, EMI, utilities, groceries, transport, healthcare, discretionary spending, cash withdrawals, and other transactions.
-- Recognised recurring income separated from refunds, transfers, loan disbursements, investments, cash deposits, and other statement credits.
-- Daily forward-filled balance evidence, partial-period warnings, declared-versus-detected EMI discrepancy checks, and trend suppression when coverage is inadequate.
-- Monthly income, expense, surplus, category-spend, and month-end balance views derived from the uploaded statement.
-- Affordability indicators for savings, EMI burden, income variation, salary share, essential/discretionary spend, utility regularity, low-balance days, and unusually large transactions.
-- A transparent 0–100 uploaded-statement affordability score with documented rule weights and mandatory-review safeguards.
-- Bank Data Simulator Parquet adapter for synthetic behavioural portfolio data.
-- Transparent decision engine: meets indicative affordability criteria, manual review, referral for additional documents, or does not meet indicative criteria.
-- Streamlit dashboard with a case summary, transaction/category filters and search, category overrides, CSV exports, and a prototype decision log.
-- Officer-facing case-summary table, traffic-light visual aid, explicit mandatory-review checklist, and downloadable decision summary.
-- Home Credit candidate benchmark (Logistic Regression, Random Forest, XGBoost, and two LightGBM configurations), single held-out-split evaluation, and deterministic model selection; the selected model is intentionally not applied to incompatible raw uploaded statements.
-- Structure ready for the later PDF-OCR and per-applicant model-alignment modules.
+![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
+![ROC-AUC](https://img.shields.io/badge/LightGBM%20ROC--AUC-0.774-blue)
+![PR-AUC](https://img.shields.io/badge/PR--AUC-0.266-blue)
+![Categorisation](https://img.shields.io/badge/categorisation%20F1-0.985-brightgreen)
+
+---
+
+## What Is Included
+
+### Pillar 1 — Deterministic Statement Affordability Engine
+- Multi-format bank CSV parser (HDFC, ICICI, SBI, Axis, Kotak) with preamble-skip, BOM, lakh-comma amounts, Dr/Cr indicators, balance reconciliation, PII masking, and duplicate removal
+- Digital native-text PDF statement parsing via `pdfplumber` (fail-closed on scanned images)
+- 4-layer transaction categorisation: structured payment prefixes (NEFT/IMPS/UPI/NACH) → merchant normalisation → vernacular tokens (Kirana, Vetan, Kist) → Uncertain fallback; **98.7% accuracy on 75-case ground-truth fixture**
+- Loan disbursals, self-transfers, refunds, and wallet top-ups explicitly separated from income
+- 23+ behavioural features: savings ratio, EMI burden, income variation, salary frequency, utility regularity, emergency buffer, income trend, expense volatility
+- 8-component transparent 0–100 affordability score with policy-version stamping and mandatory safeguard overrides
+- Salary slip cross-document verification with 15% tolerance
+- Actionable affordability metrics: max EMI, max indicative loan, stress scenarios, counterfactual guidance
+- **Real-time Scenario Shock & Stress Testing Lab**: interactive Income Shock / Expense Inflation / Rate Hike sliders
+
+### Pillar 2 — Home Credit LightGBM Default Risk Benchmark *(Separate Data Path)*
+- Calibrated LightGBM trained on 196,806 Home Credit applicants; Platt-scaled probability outputs
+- **Final-test ROC-AUC: 0.774** (95% CI: 0.767–0.781) · **PR-AUC: 0.266** (~3.3× lift) · **Brier: 0.067**
+- Stratified 64/16/20 split with fixed random_state=42; imputer/scaler fit strictly on train partition
+- Single-applicant bureau scoring via officer-entered CIBIL, age, employment tenure, active loans, overdue days
+- Exact **Tree-SHAP** attributions via `booster_.predict(pred_contrib=True)` (Lundberg & Lee 2017)
+- Input completeness ratio shown alongside every PD output
+- **The model is never applied to raw uploaded statement transactions**
+
+### Dual-Pillar Integration
+- 2×2 decision matrix: Q1 (Approve), Q2 (Bureau Alert), Q3 (Cashflow Alert), Q4 (Decline)
+- Interactive **Plotly 2D Risk Map**: applicant coordinates plotted on affordability vs PD axes
+- 4 styled policy quadrant cards with dynamic active-state highlighting
+- Salary slip failure overrides all matrix quadrants
+
+### Persistence & Compliance
+- SQLite with SHA-256 forward hash chain and external anchor (`data/HEAD_HASH.sha256`)
+- DPDP Act 2023 compliant: PII stripped before hashing for Right to Erasure
+- Tamper detection via `verify_hash_chain()`
+
+### Evaluation & Quality
+- **63 pytest tests passing** (0 failures)
+- Monte Carlo policy stability: < 5% flip rate over 1,000 trials with ±10% weight perturbation
+- Metamorphic tests: monotonicity and monetary scale invariance formally proved
 
 ## Quick start
 
