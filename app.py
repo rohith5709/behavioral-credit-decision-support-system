@@ -161,34 +161,60 @@ with tab_summary:
         )
 
 with tab_upload:
-    st.subheader("CSV bank statement")
+    st.subheader("Bank statement upload (CSV or Digital PDF)")
     st.write("Required: date, description, and either debit/credit or one signed amount column. Optional: closing balance.")
-    uploaded = st.file_uploader("Upload CSV", type=["csv"])
+    uploaded = st.file_uploader("Upload bank statement", type=["csv", "pdf"])
     mapping: dict[str, str | None] | None = None
     opening_balance = None
     if uploaded:
+        is_pdf = uploaded.name.lower().endswith(".pdf")
         try:
-            preview = read_statement_preview(BytesIO(uploaded.getvalue()))
-            suggested_mapping = suggest_column_mapping(list(preview.columns))
-            with st.expander("Review or map CSV columns", expanded=not (suggested_mapping["date"] and suggested_mapping["description"])):
-                st.caption("Use the automatic mapping where correct. For a signed amount export, leave Debit and Credit as Not supplied and select Amount.")
-                choices = ["Not supplied", *preview.columns.tolist()]
-                mapping = {}
-                for field, label in [("date", "Date"), ("description", "Description"), ("debit", "Debit"), ("credit", "Credit"), ("amount", "Signed amount"), ("balance", "Closing balance")]:
-                    suggested = suggested_mapping.get(field)
-                    mapping[field] = st.selectbox(label, choices, index=choices.index(suggested) if suggested in choices else 0, key=f"mapping_{field}")
-                    if mapping[field] == "Not supplied":
-                        mapping[field] = None
-                opening_balance = st.number_input("Opening balance (optional)", value=0.0, step=1_000.0, help="Used only to validate the first balance transition when supplied.")
-                st.dataframe(preview.head(10), hide_index=True)
+            if is_pdf:
+                from src.documents.statement_pdf import extract_text_from_pdf
+                pdf_text = extract_text_from_pdf(BytesIO(uploaded.getvalue()))
+                st.info(f"Digital PDF statement detected. Extracted {len(pdf_text.splitlines())} text lines.")
+            else:
+                preview = read_statement_preview(BytesIO(uploaded.getvalue()))
+                suggested_mapping = suggest_column_mapping(list(preview.columns))
+                with st.expander("Review or map CSV columns", expanded=not (suggested_mapping["date"] and suggested_mapping["description"])):
+                    st.caption("Use the automatic mapping where correct. For a signed amount export, leave Debit and Credit as Not supplied and select Amount.")
+                    choices = ["Not supplied", *preview.columns.tolist()]
+                    mapping = {}
+                    for field, label in [("date", "Date"), ("description", "Description"), ("debit", "Debit"), ("credit", "Credit"), ("amount", "Signed amount"), ("balance", "Closing balance")]:
+                        suggested = suggested_mapping.get(field)
+                        mapping[field] = st.selectbox(label, choices, index=choices.index(suggested) if suggested in choices else 0, key=f"mapping_{field}")
+                        if mapping[field] == "Not supplied":
+                            mapping[field] = None
+                    opening_balance = st.number_input("Opening balance (optional)", value=0.0, step=1_000.0, help="Used only to validate the first balance transition when supplied.")
+                    st.dataframe(preview.head(10), hide_index=True)
         except (ValueError, pd.errors.ParserError) as error:
             st.error(str(error))
+
+    st.subheader("Optional: Salary slip cross-verification")
+    slip_col1, slip_col2 = st.columns(2)
+    slip_salary = slip_col1.number_input("Salary slip net pay (₹)", min_value=0.0, step=5_000.0)
+    slip_employer = slip_col2.text_input("Declared employer name", placeholder="e.g. Infosys, TCS, ACME")
+
     if uploaded and st.button("Analyse statement", type="primary"):
         try:
-            statement, quality_report = parse_statement_csv(BytesIO(uploaded.getvalue()), column_mapping=mapping, opening_balance=opening_balance if opening_balance else None)
+            if uploaded.name.lower().endswith(".pdf"):
+                from src.documents.statement_pdf import parse_statement_pdf
+                statement, quality_report = parse_statement_pdf(BytesIO(uploaded.getvalue()))
+            else:
+                statement, quality_report = parse_statement_csv(BytesIO(uploaded.getvalue()), column_mapping=mapping, opening_balance=opening_balance if opening_balance else None)
             statement = annotate_income_evidence(statement)
             apply_statement(statement, quality_report)
             st.success(f"Parsed {len(statement)} transactions. Data-quality score: {quality_report.score:.0%}")
+
+            if slip_salary > 0:
+                from src.documents.salary_verification import verify_salary_slip_cross_document
+                verification = verify_salary_slip_cross_document(statement, slip_salary, slip_employer)
+                if verification.is_verified:
+                    st.success(f"Salary slip verification: {verification.status}")
+                else:
+                    st.warning(f"Salary slip verification: {verification.status}")
+                for r in verification.reasons:
+                    st.caption(f"- {r}")
         except (ValueError, pd.errors.ParserError) as error:
             st.error(str(error))
     if st.session_state.statement is not None:
