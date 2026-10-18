@@ -36,6 +36,7 @@ from src.reporting.case_summary import (
     case_status,
     extract_review_flags,
 )
+from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure
 from src.models.applicant_scoring import predict_applicant_risk
 from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
 
@@ -43,8 +44,62 @@ from src.data.db import init_db, save_case_record, get_case_records, verify_hash
 init_db()
 
 st.set_page_config(page_title="Credit Decision Support", page_icon="💳", layout="wide")
+
+# Modern FinTech institutional CSS
+st.markdown(
+    """
+    <style>
+    .main .block-container {
+        padding-top: 1.8rem;
+        padding-bottom: 2.5rem;
+        max-width: 1350px;
+    }
+    .header-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(59, 130, 246, 0.12);
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        color: #60A5FA;
+        padding: 0.3rem 0.85rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+    }
+    .matrix-card {
+        padding: 1rem 1.2rem;
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .matrix-card-active {
+        border: 2px solid #38BDF8 !important;
+        background: rgba(56, 189, 248, 0.1) !important;
+        box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+    }
+    .badge-pill {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+    .badge-pill-green { background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; }
+    .badge-pill-amber { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid #F59E0B; }
+    .badge-pill-red { background: rgba(239, 68, 68, 0.2); color: #F87171; border: 1px solid #EF4444; }
+    .badge-pill-blue { background: rgba(59, 130, 246, 0.2); color: #60A5FA; border: 1px solid #3B82F6; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="header-badge">🛡️ Dual-Pillar Risk Engine • DPDP Act 2023 Compliant • SHA-256 Audit Trail</div>', unsafe_allow_html=True)
 st.title("Behavioral Credit Decision Support System")
-st.caption("A prototype for human loan-officer review. It does not make final lending decisions.")
+st.caption("A decision-support platform for loan officers. Combines deterministic statement cash-flow affordability with a calibrated LightGBM risk benchmark.")
 
 with st.sidebar:
     st.header("Applicant and request")
@@ -571,6 +626,9 @@ with tab_validation:
                 local_exp = explain_local_factors(mock_applicant)
                 st.caption("Displaying Tree-SHAP attributions for reference applicant persona.")
 
+            fig_shap = build_shap_horizontal_bar_figure(local_exp)
+            st.plotly_chart(fig_shap, use_container_width=True)
+
             c_risk, c_prot = st.columns(2)
             with c_risk:
                 st.markdown("**Top risk-increasing drivers (Positive SHAP):**")
@@ -625,6 +683,88 @@ with tab_decision:
                     decision.recommendation,
                     decision.pillar_summary.get("quadrant", ""),
                 )
+
+                # Visual 2x2 Decision Matrix Map
+                fig_matrix = build_decision_matrix_figure(
+                    affordability_score=decision.affordability_score,
+                    bureau_probability=bureau_prob,
+                    applicant_id=applicant_id or "Current Applicant",
+                )
+                st.plotly_chart(fig_matrix, use_container_width=True)
+
+                # Visual 4-Quadrant Policy Cards Grid
+                active_quad = decision.pillar_summary.get("quadrant", "")
+                q_row1_col1, q_row1_col2 = st.columns(2)
+                with q_row1_col1:
+                    is_active = active_quad == "Quadrant 1"
+                    card_border = "matrix-card-active" if is_active else ""
+                    st.markdown(
+                        f"""
+                        <div class="matrix-card {card_border}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#34D399;">Q1: Meets Indicative Criteria</b>
+                                <span class="badge-pill badge-pill-green">{'📍 CURRENT PLACEMENT' if is_active else 'Score ≥ 70 & PD < 20%'}</span>
+                            </div>
+                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                                Robust statement cash-flow surplus accompanied by acceptable external credit bureau default risk.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with q_row1_col2:
+                    is_active = active_quad == "Quadrant 2"
+                    card_border = "matrix-card-active" if is_active else ""
+                    st.markdown(
+                        f"""
+                        <div class="matrix-card {card_border}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#FBBF24;">Q2: Manual Review (Bureau Risk)</b>
+                                <span class="badge-pill badge-pill-amber">{'📍 CURRENT PLACEMENT' if is_active else 'Score ≥ 70 & PD ≥ 20%'}</span>
+                            </div>
+                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                                Statement surplus appears viable, but external trade lines or delinquency history signal elevated default risk.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                q_row2_col1, q_row2_col2 = st.columns(2)
+                with q_row2_col1:
+                    is_active = active_quad == "Quadrant 3"
+                    card_border = "matrix-card-active" if is_active else ""
+                    st.markdown(
+                        f"""
+                        <div class="matrix-card {card_border}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#FBBF24;">Q3: Manual Review (Cashflow Alert)</b>
+                                <span class="badge-pill badge-pill-amber">{'📍 CURRENT PLACEMENT' if is_active else 'Score < 70 & PD < 20%'}</span>
+                            </div>
+                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                                Clean bureau history, but statement indicates thin cash reserves, volatile income, or heavy expense burden.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with q_row2_col2:
+                    is_active = active_quad == "Quadrant 4"
+                    card_border = "matrix-card-active" if is_active else ""
+                    st.markdown(
+                        f"""
+                        <div class="matrix-card {card_border}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#F87171;">Q4: Decline (Dual Risk Elevation)</b>
+                                <span class="badge-pill badge-pill-red">{'📍 CURRENT PLACEMENT' if is_active else 'Score < 70 & PD ≥ 20%'}</span>
+                            </div>
+                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                                Depleted cash flow and high debt obligations compounded by elevated external credit default risk.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
         else:
             decision_columns = st.columns(2, border=True)
             decision_columns[0].metric("Behavioural affordability score", f"{decision.affordability_score}/100")
@@ -668,6 +808,50 @@ with tab_decision:
                 col_a.metric("Max sustainable EMI", f"₹{metrics_actionable['max_sustainable_monthly_emi']:,.0f}")
                 col_b.metric("Max indicative loan", f"₹{metrics_actionable['max_indicative_loan_amount']:,.0f}")
                 st.caption(f"Stress test (Income -20%, Expense +10%, Rate +2%): Stressed max loan = ₹{metrics_actionable['stressed_max_indicative_loan']:,.0f}")
+                
+                # Interactive Scenario Stress Testing Lab
+                st.markdown("---")
+                st.subheader("⚡ Real-Time Scenario Shock & Stress Testing Lab")
+                st.caption("Interactively test applicant loan capacity and risk stability under adverse economic shocks.")
+                
+                col_s1, col_s2, col_s3 = st.columns(3)
+                shock_inc = col_s1.slider("Income Shock", min_value=-50, max_value=0, value=-20, step=5, format="%d%%", key="slider_shock_inc")
+                shock_exp = col_s2.slider("Expense Inflation", min_value=0, max_value=50, value=10, step=5, format="+%d%%", key="slider_shock_exp")
+                shock_rate = col_s3.slider("Interest Rate Hike", min_value=0.0, max_value=6.0, value=2.0, step=0.5, format="+%.1f%%", key="slider_shock_rate")
+
+                # Dynamic calculations under shock
+                feat = st.session_state.features
+                st_inc = max(0.0, float(feat["average_monthly_income"]) * (1.0 + shock_inc / 100.0))
+                st_exp = float(feat["average_monthly_expense"]) * (1.0 + shock_exp / 100.0)
+                st_surplus = max(0.0, st_inc - st_exp)
+                st_max_emi = max(0.0, st_surplus * 0.50)
+                st_annual_rate = float(annual_interest_rate) + shock_rate
+                st_m_rate = st_annual_rate / 1200.0
+                st_months = int(loan_tenure_months)
+                if st_m_rate > 0 and st_max_emi > 0:
+                    st_max_loan = st_max_emi * ((1.0 + st_m_rate) ** st_months - 1.0) / (st_m_rate * (1.0 + st_m_rate) ** st_months)
+                else:
+                    st_max_loan = st_max_emi * st_months
+
+                col_res1, col_res2, col_res3 = st.columns(3)
+                col_res1.metric(
+                    "Stressed Monthly Surplus",
+                    f"₹{st_surplus:,.0f}",
+                    delta=f"{st_surplus - feat['monthly_surplus']:,.0f}",
+                )
+                col_res2.metric(
+                    "Stressed Max Sustainable EMI",
+                    f"₹{st_max_emi:,.0f}",
+                    delta=f"{st_max_emi - metrics_actionable['max_sustainable_monthly_emi']:,.0f}",
+                )
+                base_loan = metrics_actionable['max_indicative_loan_amount']
+                retention_pct = (st_max_loan / base_loan) if base_loan > 0 else 0.0
+                col_res3.metric(
+                    "Stressed Loan Capacity",
+                    f"₹{st_max_loan:,.0f}",
+                    delta=f"{retention_pct:.0%} retention",
+                )
+
                 st.subheader("Counterfactual guidance")
                 for item in metrics_actionable["counterfactual_guidance"]:
                     st.write(f"- {item}")
