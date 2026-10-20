@@ -1,4 +1,4 @@
-"""Streamlit interface for the decision-support prototype."""
+"""Modern Fintech Risk Intelligence UI - Streamlit frontend."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src.config import (
     HOME_CREDIT_COMPARISON_PATH,
@@ -44,324 +43,277 @@ from src.data.db import init_db, save_case_record, get_case_records, verify_hash
 # Initialize SQLite database for decision records
 init_db()
 
-st.set_page_config(page_title="Credit Decision Support | Sound Risk Intelligence", layout="wide")
+st.set_page_config(
+    page_title="Credit Decision Support | Sound Risk Intelligence",
+    page_icon="SOUND",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# ── Production Spotify Dark Aesthetic — Full CSS overhaul ────────────────────
+# ── Clean, Futuristic Dark Fintech Styling ──────────────────────────────────────
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
     html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    }
+    code, kbd, samp, pre {
+        font-family: 'JetBrains Mono', monospace !important;
     }
 
     /* Core Canvas */
-    .stApp { background-color: #0a0a0a !important; color: #FFFFFF !important; }
+    .stApp {
+        background-color: #0B0E14 !important;
+        color: #E2E8F0 !important;
+    }
     .main .block-container {
-        padding-top: 0 !important;
-        padding-bottom: 3rem;
-        max-width: 1400px;
+        padding-top: 1.25rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 1440px !important;
     }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: #0a0a0a; }
-    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #1DB954; }
+    /* Header Bar */
+    .top-nav-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #111726;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 0.9rem 1.5rem;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .top-nav-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .top-nav-logo {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #10B981, #047857);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 0.85rem;
+        letter-spacing: -0.05em;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    }
+    .top-nav-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #F8FAFC;
+        letter-spacing: -0.02em;
+        margin: 0;
+        line-height: 1.2;
+    }
+    .top-nav-sub {
+        font-size: 0.75rem;
+        color: #64748B;
+        margin: 0;
+    }
+    .top-nav-badges {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Status Pills */
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .status-pill-green {
+        background: rgba(16, 185, 129, 0.12);
+        color: #34D399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-pill-blue {
+        background: rgba(59, 130, 246, 0.12);
+        color: #60A5FA;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .status-pill-amber {
+        background: rgba(245, 158, 11, 0.12);
+        color: #FBBF24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .status-pill-red {
+        background: rgba(239, 68, 68, 0.12);
+        color: #F87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
 
     /* Sidebar */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0d0d0d 0%, #111 100%) !important;
-        border-right: 1px solid rgba(255,255,255,0.05) !important;
+        background-color: #0E131F !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #F8FAFC !important;
+        font-size: 0.85rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        margin-top: 1rem !important;
+        margin-bottom: 0.5rem !important;
     }
     [data-testid="stSidebar"] label {
-        color: #888 !important;
+        color: #94A3B8 !important;
         font-size: 0.75rem !important;
+        font-weight: 500 !important;
+    }
+
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px;
+        background-color: #111726;
+        padding: 5px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 1rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 6px !important;
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        padding: 8px 14px !important;
+        border: none !important;
+        background: transparent !important;
+        transition: all 0.15s ease;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1E293B !important;
+        color: #34D399 !important;
+        border: 1px solid rgba(16, 185, 129, 0.3) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    /* Metric Cards */
+    [data-testid="stMetric"] {
+        background: #111726 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        padding: 0.9rem 1.1rem !important;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    [data-testid="stMetric"]:hover {
+        border-color: rgba(16, 185, 129, 0.35) !important;
+        transform: translateY(-1px);
+    }
+    [data-testid="stMetricLabel"] {
+        color: #94A3B8 !important;
+        font-size: 0.72rem !important;
         font-weight: 600 !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
     }
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 {
-        color: #fff !important;
-        font-size: 0.9rem !important;
-        font-weight: 700 !important;
-        border-left: 3px solid #1DB954 !important;
-        padding-left: 10px !important;
-        margin: 1.2rem 0 0.5rem !important;
+    [data-testid="stMetricValue"] {
+        color: #F8FAFC !important;
+        font-size: 1.45rem !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em !important;
     }
 
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: #111;
-        padding: 5px;
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.06);
-        margin-bottom: 1.2rem;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 7px !important;
-        color: #666 !important;
-        font-weight: 600 !important;
-        font-size: 0.78rem !important;
-        padding: 7px 14px !important;
-        border: none !important;
-        background: transparent !important;
-        transition: all 0.18s ease !important;
-    }
-    .stTabs [aria-selected="true"] {
-        background: #1DB954 !important;
-        color: #000 !important;
-        box-shadow: 0 2px 14px rgba(29,185,84,0.4) !important;
-    }
-
-    /* Badges */
-    .badge-pill {
-        display: inline-block;
-        padding: 0.2rem 0.65rem;
-        border-radius: 50px;
-        font-weight: 700;
-        font-size: 0.67rem;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-    .badge-pill-green  { background:rgba(29,185,84,0.14); color:#1DB954; border:1px solid rgba(29,185,84,0.4); }
-    .badge-pill-amber  { background:rgba(255,160,0,0.14);  color:#FFA000; border:1px solid rgba(255,160,0,0.4); }
-    .badge-pill-red    { background:rgba(233,20,41,0.14);   color:#E91429; border:1px solid rgba(233,20,41,0.4); }
-    .badge-pill-blue   { background:rgba(46,119,208,0.14);  color:#5799EF; border:1px solid rgba(46,119,208,0.4); }
-
-    /* Spotify Card */
-    .spotify-card {
-        background: #161616;
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 14px;
-        padding: 1.2rem 1.5rem;
-        margin-bottom: 1rem;
-        transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
-    }
-    .spotify-card:hover {
-        background: #1e1e1e;
-        border-color: rgba(255,255,255,0.13);
-        transform: translateY(-2px);
-        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-    }
-    .spotify-badge {
-        display: inline-flex; align-items: center; gap: 0.4rem;
-        background: rgba(29,185,84,0.12);
-        border: 1px solid rgba(29,185,84,0.35);
-        color: #1DB954;
-        padding: 0.28rem 0.8rem;
-        border-radius: 50px;
-        font-size: 0.67rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-    }
-
-    /* Decision Matrix Cards */
-    .matrix-card {
-        padding: 1rem 1.2rem;
-        border-radius: 12px;
-        margin-bottom: 0.8rem;
-        background: #161616;
-        border: 1px solid rgba(255,255,255,0.06);
-        transition: all 0.22s ease;
-    }
-    .matrix-card-active {
-        border: 2px solid #1DB954 !important;
-        background: rgba(29,185,84,0.07) !important;
-        box-shadow: 0 0 28px rgba(29,185,84,0.18);
-    }
-
-    /* Native Metrics */
-    [data-testid="stMetric"] {
-        background: #161616 !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 12px !important;
-        padding: 1rem !important;
-    }
-    [data-testid="stMetricValue"] { color:#fff !important; font-weight:800 !important; }
-    [data-testid="stMetricLabel"] { color:#666 !important; font-size:0.73rem !important; text-transform:uppercase; letter-spacing:0.04em; }
-
-    /* Buttons */
-    .stButton > button {
-        background: #1DB954 !important;
-        color: #000 !important;
-        font-weight: 700 !important;
-        border-radius: 50px !important;
-        padding: 0.5rem 1.4rem !important;
-        border: none !important;
-        font-size: 0.84rem !important;
-        transition: all 0.18s ease !important;
-    }
-    .stButton > button:hover {
-        background: #1ED760 !important;
-        transform: scale(1.03) !important;
-        box-shadow: 0 6px 24px rgba(29,185,84,0.4) !important;
-    }
-
-    /* Inputs */
+    /* Form Controls & Inputs */
     [data-baseweb="input"] > div,
     [data-baseweb="select"] > div:first-child,
     [data-baseweb="textarea"] > div {
-        background: #1a1a1a !important;
-        border: 1px solid rgba(255,255,255,0.09) !important;
+        background-color: #141B2D !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 8px !important;
-        color: #fff !important;
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="input"] > div:focus-within,
+    [data-baseweb="select"] > div:first-child:focus-within {
+        border-color: #10B981 !important;
+        box-shadow: 0 0 0 1px #10B981 !important;
     }
 
-    /* DataFrames */
-    [data-testid="stDataFrame"] { border-radius: 10px !important; overflow: hidden; }
+    /* Buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, #10B981, #059669) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1.2rem !important;
+        border: none !important;
+        font-size: 0.82rem !important;
+        transition: all 0.15s ease !important;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25) !important;
+    }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #059669, #047857) !important;
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+        transform: translateY(-1px);
+    }
 
-    /* Expanders */
-    [data-testid="stExpander"] > div:first-child {
-        background: #141414 !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
+    /* Decision Matrix Policy Cards */
+    .policy-quadrant-card {
+        background: #111726;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 0.75rem;
+        transition: all 0.2s ease;
+    }
+    .policy-quadrant-card-active {
+        border: 2px solid #10B981 !important;
+        background: rgba(16, 185, 129, 0.08) !important;
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.2) !important;
+    }
+
+    /* Container Borders */
+    [data-testid="stExpander"] {
+        background: #111726 !important;
+        border: 1px solid rgba(255, 255, 255, 0.07) !important;
         border-radius: 10px !important;
     }
 
-    /* Alerts */
-    [data-testid="stAlert"] { border-radius: 10px !important; }
+    /* Tables & Dataframes */
+    [data-testid="stDataFrame"] {
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ── Immersive Hero Header rendered as a standalone HTML component ─────────────
-components.html(
+# ── Clean Production Navigation Bar ─────────────────────────────────────────────
+st.markdown(
     """
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800;900&display=swap');
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
-
-      .hero {
-        position: relative;
-        background: #0a0a0a;
-        border-radius: 20px;
-        padding: 2.2rem 2.6rem 1.8rem;
-        overflow: hidden;
-        border: 1px solid rgba(255,255,255,0.07);
-      }
-      .hero::before {
-        content: '';
-        position: absolute; top: -70px; left: -70px;
-        width: 360px; height: 360px;
-        background: radial-gradient(circle, rgba(29,185,84,0.20) 0%, transparent 70%);
-        border-radius: 50%;
-        animation: glow 4s ease-in-out infinite;
-      }
-      .hero::after {
-        content: '';
-        position: absolute; bottom: -90px; right: 3%;
-        width: 280px; height: 280px;
-        background: radial-gradient(circle, rgba(29,185,84,0.09) 0%, transparent 65%);
-        border-radius: 50%;
-        animation: glow 6.5s ease-in-out 1.2s infinite;
-      }
-      @keyframes glow {
-        0%,100% { transform: scale(1);   opacity: 0.75; }
-        50%      { transform: scale(1.18); opacity: 1; }
-      }
-      .inner { position: relative; z-index: 1; }
-
-      .eyebrow {
-        display: inline-flex; align-items: center; gap: 7px;
-        background: rgba(29,185,84,0.10);
-        border: 1px solid rgba(29,185,84,0.30);
-        color: #1DB954;
-        padding: 4px 14px;
-        border-radius: 50px;
-        font-size: 0.62rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.11em;
-        margin-bottom: 1rem;
-      }
-      .dot {
-        width: 6px; height: 6px;
-        background: #1DB954;
-        border-radius: 50%;
-        animation: blink 1.5s ease-in-out infinite;
-      }
-      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
-
-      .title {
-        font-size: 2.5rem;
-        font-weight: 900;
-        color: #fff;
-        letter-spacing: -0.045em;
-        line-height: 1.1;
-        margin-bottom: 0.55rem;
-      }
-      .title .green { color: #1DB954; }
-
-      .subtitle {
-        font-size: 0.875rem;
-        color: #606060;
-        line-height: 1.55;
-        max-width: 580px;
-      }
-
-      .pillars {
-        display: flex; gap: 0.85rem; margin-top: 1.5rem; flex-wrap: wrap;
-      }
-      .chip {
-        display: flex; align-items: center; gap: 9px;
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.07);
-        border-radius: 10px;
-        padding: 0.5rem 0.9rem;
-        font-size: 0.76rem;
-        color: #aaa;
-        font-weight: 500;
-        transition: border-color 0.2s, background 0.2s;
-      }
-      .chip:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.14); }
-      .chip-ico {
-        width: 26px; height: 26px;
-        background: rgba(29,185,84,0.14);
-        border-radius: 6px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 0.72rem; color: #1DB954; font-weight: 900;
-      }
-      .chip-label { color: #fff; display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-    </style>
-
-    <div class="hero">
-      <div class="inner">
-        <div class="eyebrow">
-          <div class="dot"></div>
-          Sound Risk Intelligence &nbsp;&middot;&nbsp; DPDP Act 2023 &nbsp;&middot;&nbsp; SHA-256 Ledger
+    <div class="top-nav-bar">
+        <div class="top-nav-brand">
+            <div class="top-nav-logo">CD</div>
+            <div>
+                <div class="top-nav-title">Behavioral Credit Decision Support System</div>
+                <div class="top-nav-sub">Dual-Pillar Risk Intelligence &middot; Cash Flow Engine + LightGBM Benchmark</div>
+            </div>
         </div>
-        <div class="title">Credit Decision<br><span class="green">Support System</span></div>
-        <div class="subtitle">
-          Dual-Pillar Underwriting Engine — Deterministic Statement Cash Flow analysis combined with
-          LightGBM Bureau Risk Benchmark for officer-assisted credit evaluation.
+        <div class="top-nav-badges">
+            <span class="status-pill status-pill-green">ENGINE ONLINE</span>
+            <span class="status-pill status-pill-blue">DPDP ACT 2023</span>
+            <span class="status-pill status-pill-blue">SHA-256 LEDGER</span>
         </div>
-        <div class="pillars">
-          <div class="chip">
-            <div class="chip-ico">P1</div>
-            <div><span class="chip-label">Pillar 1</span>Statement Affordability</div>
-          </div>
-          <div class="chip">
-            <div class="chip-ico">P2</div>
-            <div><span class="chip-label">Pillar 2</span>Bureau Risk — LightGBM</div>
-          </div>
-          <div class="chip">
-            <div class="chip-ico">2x2</div>
-            <div><span class="chip-label">Matrix</span>Dual-Pillar Quadrant</div>
-          </div>
-        </div>
-      </div>
     </div>
     """,
-    height=272,
+    unsafe_allow_html=True,
 )
-
 
 # Demo Personas Catalog for Instant Panel Evaluation
 DEMO_PERSONAS = {
@@ -417,23 +369,7 @@ DEMO_PERSONAS = {
 }
 
 with st.sidebar:
-    st.markdown(
-        """
-        <div style="padding: 0.5rem 0 1rem;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:0.4rem;">
-            <div style="width:8px;height:8px;background:#1DB954;border-radius:50%;box-shadow:0 0 8px rgba(29,185,84,0.7);flex-shrink:0;animation:pulse2 2s infinite"></div>
-            <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1DB954;">System Active</span>
-          </div>
-          <div style="font-size:1.05rem;font-weight:800;color:#fff;letter-spacing:-0.02em;">Underwriting Console</div>
-          <div style="font-size:0.72rem;color:#444;margin-top:2px;">Dual-Pillar Credit Engine</div>
-          <style>@keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.3}}</style>
-        </div>
-        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin-bottom:0.8rem;">
-        """,
-        unsafe_allow_html=True,
-    )
-    st.header("Applicant & Request")
-
+    st.markdown("### Underwriting Console")
     selected_persona_name = st.selectbox(
         "Load Preset Demo Persona",
         options=list(DEMO_PERSONAS.keys()),
@@ -448,21 +384,23 @@ with st.sidebar:
     default_rate = preset["annual_interest_rate"] if preset else 12.0
     default_decl_emi = preset["declared_emi"] if preset else 0.0
 
+    st.markdown("### Loan Request")
     applicant_id = st.text_input("Applicant ID", value=default_app_id)
     requested_amount = st.number_input("Requested loan amount (INR)", min_value=0.0, value=default_req_amt, step=10_000.0)
     loan_tenure_months = st.number_input("Requested loan tenure (months)", min_value=1, value=default_tenure, step=1)
     annual_interest_rate = st.number_input("Indicative annual interest rate (%)", min_value=0.0, value=default_rate, step=0.5)
     declared_emi = st.number_input("Declared monthly EMI (INR)", min_value=0.0, value=default_decl_emi, step=1_000.0)
     officer_name = st.text_input("Reviewing officer", placeholder="Loan officer name")
-    consent = st.checkbox("Applicant consent for prototype analysis confirmed", value=True)
+    consent = st.checkbox("Applicant consent for analysis confirmed", value=True)
+
     monthly_rate = annual_interest_rate / 1200
     proposed_emi = (
         requested_amount / loan_tenure_months
         if monthly_rate == 0 else requested_amount * monthly_rate * (1 + monthly_rate) ** loan_tenure_months / ((1 + monthly_rate) ** loan_tenure_months - 1)
     ) if requested_amount else 0.0
-    st.caption(f"Estimated new EMI: INR {proposed_emi:,.0f}/month")
+    st.caption(f"Estimated proposed EMI: **INR {proposed_emi:,.0f} / month**")
 
-    with st.expander("Applicant Bureau Profile (Pillar 2)", expanded=True):
+    with st.expander("Bureau Profile (Pillar 2)", expanded=True):
         enable_bureau = st.checkbox("Enable bureau risk scoring", value=True)
         default_cibil = preset["cibil_score"] if preset else 740
         default_age = preset["applicant_age"] if preset else 32
@@ -512,7 +450,12 @@ def load_metrics(path: Path, modified_at_ns: int) -> dict[str, float]:
 
 
 tab_summary, tab_upload, tab_profile, tab_portfolio, tab_validation, tab_decision = st.tabs([
-    "1. Case summary", "2. Upload statement", "3. Behaviour profile", "4. Illustrative synthetic data", "5. ML benchmark (separate)", "6. Officer decision"
+    "1. Case summary",
+    "2. Upload statement",
+    "3. Behaviour profile",
+    "4. Illustrative synthetic data",
+    "5. ML benchmark (separate)",
+    "6. Officer decision",
 ])
 
 if "statement" not in st.session_state:
@@ -567,7 +510,7 @@ with tab_summary:
         quality = st.session_state.quality_report
         visual_status, status_message = case_status(decision.recommendation)
 
-        # Futuristic Gauge Cluster (Spotify Green theme)
+        # Primary Gauge & Status Summary
         gauge_col1, gauge_col2, gauge_col3 = st.columns([1, 1, 1.2])
         with gauge_col1:
             fig_aff = build_gauge_figure(
@@ -590,23 +533,23 @@ with tab_summary:
             )
             st.plotly_chart(fig_q, use_container_width=True)
         with gauge_col3:
-            rec_badge_class = (
-                "badge-pill-green" if "Meets" in decision.recommendation
-                else "badge-pill-amber" if "Review" in decision.recommendation or "Refer" in decision.recommendation
-                else "badge-pill-red"
+            rec_pill_class = (
+                "status-pill-green" if "Meets" in decision.recommendation
+                else "status-pill-amber" if "Review" in decision.recommendation or "Refer" in decision.recommendation
+                else "status-pill-red"
             )
             st.markdown(
                 f"""
-                <div class="spotify-card" style="height: 190px; display:flex; flex-direction:column; justify-content:center;">
-                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:#B3B3B3; margin-bottom:6px;">
+                <div style="background:#111726; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:1.25rem 1.4rem; height:190px; display:flex; flex-direction:column; justify-content:center;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#94A3B8; margin-bottom:8px;">
                         System Recommendation
                     </div>
                     <div>
-                        <span class="badge-pill {rec_badge_class}" style="font-size:0.9rem; padding: 0.4rem 0.9rem;">
+                        <span class="status-pill {rec_pill_class}" style="font-size:0.85rem; padding: 5px 12px;">
                             {decision.recommendation}
                         </span>
                     </div>
-                    <div style="font-size:0.83rem; color:#B3B3B3; margin-top:10px; line-height:1.4;">
+                    <div style="font-size:0.82rem; color:#94A3B8; margin-top:12px; line-height:1.45;">
                         {status_message}
                     </div>
                 </div>
@@ -614,163 +557,35 @@ with tab_summary:
                 unsafe_allow_html=True,
             )
 
-        # ── Custom animated stat card row ────────────────────────────────────────
+        # Core Financial Position Metrics
+        col_m1, col_m2, col_m3 = st.columns(3)
         surplus_before = st.session_state.features['monthly_surplus']
-        surplus_after  = st.session_state.features['post_loan_monthly_surplus']
-        surplus_delta  = surplus_after - surplus_before
-        surplus_after_color  = "#1DB954" if surplus_after >= 0 else "#E91429"
-        surplus_delta_color  = "#1DB954" if surplus_delta >= 0 else "#E91429"
-        _stat_cards_html = f"""
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
-          * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-          body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
-          .stat-row {{ display: flex; gap: 14px; }}
-          .stat-card {{
-            flex: 1;
-            background: #161616;
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 14px;
-            padding: 1.1rem 1.3rem 1rem;
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.2s ease, border-color 0.2s;
-          }}
-          .stat-card:hover {{ transform: translateY(-3px); border-color: rgba(255,255,255,0.15); }}
-          .stat-card::after {{
-            content: '';
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 3px;
-            border-radius: 0 0 14px 14px;
-          }}
-          .card-green::after  {{ background: #1DB954; box-shadow: 0 0 12px rgba(29,185,84,0.5); }}
-          .card-red::after    {{ background: #E91429; box-shadow: 0 0 12px rgba(233,20,41,0.4); }}
-          .card-neutral::after {{ background: #5799EF; box-shadow: 0 0 12px rgba(87,153,239,0.4); }}
-          .card-label {{
-            font-size: 0.68rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: #555;
-            margin-bottom: 0.55rem;
-          }}
-          .card-value {{
-            font-size: 1.75rem;
-            font-weight: 900;
-            color: #fff;
-            letter-spacing: -0.03em;
-            line-height: 1;
-          }}
-          .card-sub {{
-            font-size: 0.72rem;
-            color: #555;
-            margin-top: 0.35rem;
-          }}
-          .card-delta {{
-            display: inline-block;
-            font-size: 0.72rem;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 50px;
-            margin-top: 0.4rem;
-          }}
-        </style>
-        <div class="stat-row">
-          <div class="stat-card card-green">
-            <div class="card-label">Before New Loan — Monthly Surplus</div>
-            <div class="card-value">INR {surplus_before:,.0f}</div>
-            <div class="card-sub">Current net cash position after expenses</div>
-          </div>
-          <div class="stat-card card-neutral">
-            <div class="card-label">Estimated New EMI</div>
-            <div class="card-value">INR {proposed_emi:,.0f}</div>
-            <div class="card-sub">Calculated at {annual_interest_rate:.1f}% p.a. over {loan_tenure_months} months</div>
-          </div>
-          <div class="stat-card {'card-green' if surplus_after >= 0 else 'card-red'}">
-            <div class="card-label">After New Loan — Monthly Surplus</div>
-            <div class="card-value" style="color:{surplus_after_color};">INR {surplus_after:,.0f}</div>
-            <div class="card-delta" style="background:{'rgba(29,185,84,0.12)' if surplus_delta >= 0 else 'rgba(233,20,41,0.12)'}; color:{surplus_delta_color};">
-              {'▲' if surplus_delta >= 0 else '▼'} INR {abs(surplus_delta):,.0f} vs before
-            </div>
-          </div>
-        </div>
-        """
-        components.html(_stat_cards_html, height=130)
+        surplus_after = st.session_state.features['post_loan_monthly_surplus']
+        surplus_delta = surplus_after - surplus_before
+
+        col_m1.metric("Monthly surplus (before loan)", f"INR {surplus_before:,.0f}")
+        col_m2.metric("Estimated proposed EMI", f"INR {proposed_emi:,.0f}")
+        col_m3.metric(
+            "Monthly surplus (after loan)",
+            f"INR {surplus_after:,.0f}",
+            delta=f"INR {surplus_delta:,.0f}",
+            delta_color="normal",
+        )
 
         review_flags = extract_review_flags(decision.reasons)
-        # ── Styled Review Checklist ───────────────────────────────────────────
-        if review_flags:
-            flag_items_html = "".join(
-                f"""<div class="flag-item">
-                      <div class="flag-dot"></div>
-                      <div class="flag-text">{flag}</div>
-                    </div>"""
-                for flag in review_flags
-            )
-            checklist_status = "action-required"
-            checklist_header = "Review Flags — Action Required"
-            checklist_border = "#E91429"
-            checklist_bg = "rgba(233,20,41,0.05)"
-        else:
-            flag_items_html = """<div class="flag-item clear">
-                                   <div class="flag-dot clear-dot"></div>
-                                   <div class="flag-text">No mandatory evidence safeguard triggered. Officer review remains required per policy.</div>
-                                 </div>"""
-            checklist_header = "Review Checklist — No Critical Flags"
-            checklist_border = "#1DB954"
-            checklist_bg = "rgba(29,185,84,0.05)"
-
-        _checklist_html = f"""
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
-          * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-          body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
-          .checklist {{
-            background: {checklist_bg};
-            border: 1px solid rgba(255,255,255,0.07);
-            border-left: 4px solid {checklist_border};
-            border-radius: 12px;
-            padding: 1rem 1.3rem;
-          }}
-          .checklist-header {{
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: {checklist_border};
-            margin-bottom: 0.8rem;
-          }}
-          .flag-item {{
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 0.45rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-          }}
-          .flag-item:last-child {{ border-bottom: none; }}
-          .flag-dot {{
-            width: 7px; height: 7px;
-            background: #E91429;
-            border-radius: 50%;
-            margin-top: 5px;
-            flex-shrink: 0;
-          }}
-          .clear-dot {{ background: #1DB954; }}
-          .flag-text {{ font-size: 0.82rem; color: #ccc; line-height: 1.45; }}
-        </style>
-        <div class="checklist">
-          <div class="checklist-header">{checklist_header}</div>
-          {flag_items_html}
-        </div>
-        """
-        components.html(_checklist_html, height=max(80, 50 + len(review_flags) * 52) if review_flags else 100)
+        with st.container(border=True):
+            st.markdown("#### Officer Review Checklist")
+            if review_flags:
+                for flag in review_flags:
+                    st.markdown(f"- <span style='color:#F87171;'>[ACTION REQUIRED]</span> {flag}", unsafe_allow_html=True)
+            else:
+                st.markdown("<span style='color:#34D399;'>[OK]</span> No mandatory evidence safeguard is currently triggered. Officer review remains required per policy.", unsafe_allow_html=True)
 
         with st.expander("Case-summary evidence table", expanded=True):
             case_summary = build_case_summary_rows(
                 st.session_state.features, quality, decision, requested_amount, proposed_emi, applicant_id
             )
-            st.dataframe(case_summary, hide_index=True)
+            st.dataframe(case_summary, hide_index=True, use_container_width=True)
             st.download_button(
                 "Download case summary CSV", safe_export_csv(case_summary),
                 "case_summary.csv", "text/csv",
@@ -785,7 +600,7 @@ with tab_summary:
 
 with tab_upload:
     st.subheader("Bank statement upload (CSV or Digital PDF)")
-    st.write("Required: date, description, and either debit/credit or one signed amount column. Optional: closing balance.")
+    st.caption("Required: date, description, and either debit/credit or one signed amount column. Optional: closing balance.")
     uploaded = st.file_uploader("Upload bank statement", type=["csv", "pdf"])
     mapping: dict[str, str | None] | None = None
     opening_balance = None
@@ -809,13 +624,13 @@ with tab_upload:
                         if mapping[field] == "Not supplied":
                             mapping[field] = None
                     opening_balance = st.number_input("Opening balance (optional)", value=0.0, step=1_000.0, help="Used only to validate the first balance transition when supplied.")
-                    st.dataframe(preview.head(10), hide_index=True)
+                    st.dataframe(preview.head(10), hide_index=True, use_container_width=True)
         except (ValueError, pd.errors.ParserError) as error:
             st.error(str(error))
 
-    st.subheader("Optional: Salary slip cross-verification")
+    st.markdown("#### Optional: Salary slip cross-verification")
     slip_col1, slip_col2 = st.columns(2)
-    slip_salary = slip_col1.number_input("Salary slip net pay (₹)", min_value=0.0, step=5_000.0)
+    slip_salary = slip_col1.number_input("Salary slip net pay (INR)", min_value=0.0, step=5_000.0)
     slip_employer = slip_col2.text_input("Declared employer name", placeholder="e.g. Infosys, TCS, ACME")
 
     if uploaded and st.button("Analyse statement", type="primary"):
@@ -843,10 +658,11 @@ with tab_upload:
                 st.session_state.salary_verification = None
         except (ValueError, pd.errors.ParserError) as error:
             st.error(str(error))
+
     if st.session_state.statement is not None:
         quality_report = st.session_state.quality_report
         with st.container(border=True):
-            st.subheader("Statement data quality")
+            st.markdown("#### Statement data quality")
             quality_columns = st.columns(4)
             quality_columns[0].metric("Quality score", f"{quality_report.score:.0%}")
             quality_columns[1].metric("Observed months", quality_report.observed_months)
@@ -855,14 +671,22 @@ with tab_upload:
             st.caption(f"Date range: {quality_report.date_range_start or 'Not available'} to {quality_report.date_range_end or 'Not available'}")
             for warning in quality_report.warnings:
                 st.warning(warning)
-        st.subheader("Categorised transactions")
+
+        st.markdown("#### Categorised transactions")
         st.caption("Review uncertain categories before using the summary. An override preserves the initial category, reviewer, rationale, and UTC timestamp in this prototype case record.")
         editable = st.session_state.statement.copy()
         editable["officer_category"] = editable["category"]
         if "category_override_rationale" not in editable:
             editable["category_override_rationale"] = ""
         editable["category_reviewer"] = officer_name or "Not supplied"
-        edited = st.data_editor(editable, key="category_review", hide_index=True, disabled=[column for column in editable.columns if column not in {"officer_category", "category_override_rationale"}], column_config={"officer_category": st.column_config.SelectboxColumn("Officer category", options=list(CATEGORY_OPTIONS))})
+        edited = st.data_editor(
+            editable,
+            key="category_review",
+            hide_index=True,
+            use_container_width=True,
+            disabled=[column for column in editable.columns if column not in {"officer_category", "category_override_rationale"}],
+            column_config={"officer_category": st.column_config.SelectboxColumn("Officer category", options=list(CATEGORY_OPTIONS))},
+        )
         if st.button("Apply category overrides"):
             if "original_category" not in edited:
                 edited["original_category"] = edited["category"]
@@ -876,6 +700,7 @@ with tab_upload:
             edited.loc[changed, "category_override_timestamp_utc"] = datetime.now(timezone.utc).isoformat()
             apply_statement(edited.drop(columns=["officer_category"]), st.session_state.quality_report)
             st.success("Category overrides applied and behavioural indicators refreshed.")
+
         with st.expander("Bulk recategorise a repeated merchant"):
             st.caption(
                 "This applies one officer-reviewed category to every transaction with the same normalised narration. "
@@ -914,74 +739,53 @@ with tab_upload:
                         st.success(f"Applied the reviewed category to {changed_count} transaction(s).")
                     except ValueError as error:
                         st.error(str(error))
+
         export_columns = st.columns(4)
-        export_columns[0].download_button("Download cleaned transactions CSV", safe_export_csv(st.session_state.statement), "cleaned_transactions.csv", "text/csv")
-        export_columns[1].download_button("Download categorised transactions CSV", safe_export_csv(st.session_state.statement), "categorised_transactions.csv", "text/csv")
-        export_columns[2].download_button("Download behavioural features CSV", safe_export_csv(pd.DataFrame([st.session_state.features])), "behavioural_features.csv", "text/csv")
+        export_columns[0].download_button("Download cleaned CSV", safe_export_csv(st.session_state.statement), "cleaned_transactions.csv", "text/csv")
+        export_columns[1].download_button("Download categorised CSV", safe_export_csv(st.session_state.statement), "categorised_transactions.csv", "text/csv")
+        export_columns[2].download_button("Download features CSV", safe_export_csv(pd.DataFrame([st.session_state.features])), "behavioural_features.csv", "text/csv")
         export_decision = recommend(None, st.session_state.features, quality_report=st.session_state.quality_report)
         export_columns[3].download_button(
-            "Download affordability breakdown CSV",
+            "Download score breakdown CSV",
             safe_export_csv(pd.DataFrame([{"component": label, "points": points} for label, points in (export_decision.affordability_components or {}).items()])),
             "affordability_score_breakdown.csv",
             "text/csv",
         )
-        category_evaluation_path = Path("reports/category_rule_evaluation.json")
-        if category_evaluation_path.exists():
-            category_evaluation = json.loads(category_evaluation_path.read_text(encoding="utf-8"))
-            with st.expander("Category-rule regression fixture (not production validation)"):
-                st.caption(
-                    f"{category_evaluation['note']} The displayed metrics are regression-fixture results, "
-                    "not a claim of real-world categorisation accuracy."
-                )
-                metrics = st.columns(3)
-                metrics[0].metric("Macro precision", f"{category_evaluation['macro_precision']:.1%}")
-                metrics[1].metric("Macro recall", f"{category_evaluation['macro_recall']:.1%}")
-                metrics[2].metric("Macro F1", f"{category_evaluation['macro_f1']:.1%}")
-                st.dataframe(pd.DataFrame(category_evaluation["per_category"]), hide_index=True)
-                st.dataframe(pd.DataFrame(category_evaluation["confusion_matrix"]).T)
-        category_coverage_path = Path("reports/heldout_category_rule_evaluation.json")
-        if category_coverage_path.exists():
-            category_coverage = json.loads(category_coverage_path.read_text(encoding="utf-8"))
-            with st.expander("Category-rule coverage fixture (not production validation)"):
-                st.warning(
-                    "This small curated sample checks rule coverage only. Its metrics are not real-statement "
-                    "or production-performance validation."
-                )
-                metrics = st.columns(3)
-                metrics[0].metric("Macro precision", f"{category_coverage['macro_precision']:.1%}")
-                metrics[1].metric("Macro recall", f"{category_coverage['macro_recall']:.1%}")
-                metrics[2].metric("Macro F1", f"{category_coverage['macro_f1']:.1%}")
-                st.dataframe(pd.DataFrame(category_coverage["per_category"]), hide_index=True)
 
 with tab_profile:
     st.subheader("Behavioural and affordability indicators")
     if st.session_state.features is None:
-        st.info("Upload and analyse a CSV statement first.")
+        st.info("Upload and analyse a bank statement first.")
     else:
         features = st.session_state.features
-        with st.container(horizontal=True):
-            st.metric("Average monthly income", f"₹{features['average_monthly_income']:,.0f}", border=True)
-            st.metric("Other statement credits", f"₹{features['other_statement_credits']:,.0f}", help="Credits excluded from recurring-income affordability calculations.", border=True)
-            st.metric("Average monthly expense", f"₹{features['average_monthly_expense']:,.0f}", border=True)
-            st.metric("Monthly surplus", f"₹{features['monthly_surplus']:,.0f}", help="Based on recognised recurring income, not every statement credit.", border=True)
-        with st.container(horizontal=True):
-            st.metric("Savings ratio", f"{features['savings_ratio']:.1%}", border=True)
-            st.metric("EMI-to-income ratio", f"{features['emi_to_income_ratio']:.1%}", border=True)
-            st.metric("Income variation", f"{features['income_variation_ratio']:.1%}", border=True)
-        with st.container(horizontal=True):
-            st.metric("Income trend", format_percent(features['income_trend_ratio'], signed=True), help="Shown only with at least three months and no partial boundary month.", border=True)
-            st.metric("Savings trend", format_percent(features['savings_trend_ratio'], signed=True), help="Shown only with at least three months and no partial boundary month.", border=True)
-            st.metric("Expense variation", f"{features['expense_variation_ratio']:.1%}", border=True)
-        with st.container(horizontal=True):
-            st.metric("Salary frequency", str(features["salary_frequency"]).title(), help="Detected frequency of rule-labelled salary credits.", border=True)
+        with st.container(border=True):
+            st.markdown("#### Primary Monthly Cash Flow Indicators")
+            r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
+            r1_c1.metric("Average monthly income", f"INR {features['average_monthly_income']:,.0f}")
+            r1_c2.metric("Other statement credits", f"INR {features['other_statement_credits']:,.0f}")
+            r1_c3.metric("Average monthly expense", f"INR {features['average_monthly_expense']:,.0f}")
+            r1_c4.metric("Monthly surplus", f"INR {features['monthly_surplus']:,.0f}")
+
+        with st.container(border=True):
+            st.markdown("#### Financial Health Ratios & Volatility")
+            r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
+            r2_c1.metric("Savings ratio", f"{features['savings_ratio']:.1%}")
+            r2_c2.metric("EMI-to-income ratio", f"{features['emi_to_income_ratio']:.1%}")
+            r2_c3.metric("Income variation", f"{features['income_variation_ratio']:.1%}")
+            r2_c4.metric("Expense variation", f"{features['expense_variation_ratio']:.1%}")
+
+        with st.container(border=True):
+            st.markdown("#### Debt Capacity & Buffer Indicators")
+            r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
+            r3_c1.metric("Salary frequency", str(features["salary_frequency"]).title())
             emergency_buffer = f"{features['emergency_buffer_months']:.1f} months" if features["has_balance_history"] else "Not available"
             emi_after_loan = f"{features['proposed_emi_to_income_ratio']:.1%}" if features["average_monthly_income"] else "Not available"
-            st.metric("Emergency buffer", emergency_buffer, help="Average closing balance divided by average monthly expense. Not available without balance history.", border=True)
-            st.metric("After new loan EMI burden", emi_after_loan, help="Existing detected/declared EMI plus estimated new EMI divided by income.", border=True)
-            st.metric("EMI evidence", "Check required" if features["emi_difference_amount"] >= 1_000 and features["emi_discrepancy_ratio"] > 0.20 else "No material mismatch", help="Compares declared EMI with detected EMI-payment occurrence; it cannot verify payment timeliness.", border=True)
+            r3_c2.metric("Emergency buffer", emergency_buffer)
+            r3_c3.metric("Post-loan EMI burden", emi_after_loan)
+            r3_c4.metric("EMI evidence", "Check required" if features["emi_difference_amount"] >= 1_000 and features["emi_discrepancy_ratio"] > 0.20 else "Consistent")
+
         if features["partial_boundary_month"]:
             st.warning("The first or last statement month appears partial. Trend metrics are withheld to avoid over-interpreting incomplete months.")
-        st.caption("Income uses recognised recurring income evidence. Other credits are displayed separately and are not assumed to be income.")
 
         monthly_summary = st.session_state.monthly_summary
         category_summary = st.session_state.category_summary
@@ -991,24 +795,25 @@ with tab_profile:
         transaction_search = st.text_input("Search transactions", placeholder="Search a merchant, payment, or description")
         filtered_monthly = monthly_summary[monthly_summary["month"].isin(selected_months)]
         filtered_categories = category_summary[category_summary["Category"].isin(selected_categories)]
+
         with st.container(border=True):
-            st.subheader("Monthly cash flow")
+            st.markdown("#### Monthly Cash Flow Trajectory")
             cash_flow_chart = filtered_monthly[["month", "income", "expense", "surplus"]].rename(columns={
                 "income": "Income", "expense": "Expense", "surplus": "Surplus",
             })
             st.line_chart(cash_flow_chart, x="month", y=["Income", "Expense", "Surplus"])
-            st.dataframe(filtered_monthly[["month", "income", "expense", "surplus", "closing_balance"]], hide_index=True)
+            st.dataframe(filtered_monthly[["month", "income", "expense", "surplus", "closing_balance"]], hide_index=True, use_container_width=True)
 
         chart_left, chart_right = st.columns(2)
         with chart_left:
             with st.container(border=True):
-                st.subheader("Expense categories")
+                st.markdown("#### Spending by Category")
                 st.bar_chart(filtered_categories, x="Category", y="Expense")
         with chart_right:
             with st.container(border=True):
-                st.subheader("Behavioural indicators")
+                st.markdown("#### Behavioral Risk Signals")
                 indicators = pd.DataFrame({
-                    "Indicator": [
+                    "Signal": [
                         "Salary-income share",
                         "Essential-expense ratio",
                         "Discretionary-expense ratio",
@@ -1020,7 +825,7 @@ with tab_profile:
                         "Uncertain transaction share",
                         "Post-loan monthly surplus",
                     ],
-                    "Value": [
+                    "Observed Value": [
                         format_percent(features['salary_income_share']),
                         f"{features['essential_expense_ratio']:.1%}",
                         f"{features['discretionary_expense_ratio']:.1%}",
@@ -1030,34 +835,26 @@ with tab_profile:
                         f"{features['large_spending_count']:.0f}",
                         f"{features['missed_salary_months']:.0f}",
                         f"{features['uncertain_transaction_share']:.1%}",
-                        f"₹{features['post_loan_monthly_surplus']:,.0f}",
+                        f"INR {features['post_loan_monthly_surplus']:,.0f}",
                     ],
                 })
-                st.dataframe(indicators, hide_index=True)
+                st.dataframe(indicators, hide_index=True, use_container_width=True)
 
-        if filtered_monthly["closing_balance"].notna().any():
-            with st.container(border=True):
-                st.subheader("Month-end balance trend")
-                st.line_chart(filtered_monthly, x="month", y="closing_balance", y_label="Closing balance (₹)")
         searched_transactions = st.session_state.statement.copy()
         if transaction_search.strip():
             searched_transactions = searched_transactions[
                 searched_transactions["description"].astype(str).str.contains(transaction_search, case=False, na=False)
             ]
-        with st.expander("Searchable transaction view"):
-            st.dataframe(searched_transactions, hide_index=True)
-        st.caption("These are descriptive affordability signals. They support review and do not determine a lending outcome.")
+        with st.expander("Searchable transaction ledger"):
+            st.dataframe(searched_transactions, hide_index=True, use_container_width=True)
 
 with tab_portfolio:
     st.subheader("Synthetic behavioural portfolio")
     if not SYNTHETIC_FEATURES_PATH.exists():
-        st.info(
-            "Import Bank Data Simulator output to view the synthetic portfolio here. "
-            "See docs/bank_data_simulator.md for the command."
-        )
+        st.info("Import Bank Data Simulator output to view the synthetic portfolio here.")
     else:
         portfolio = load_synthetic_portfolio(SYNTHETIC_FEATURES_PATH, SYNTHETIC_FEATURES_PATH.stat().st_mtime_ns)
-        metric_columns = st.columns(3, border=True)
+        metric_columns = st.columns(3)
         metric_columns[0].metric("Synthetic profiles", f"{len(portfolio):,}")
         metric_columns[1].metric("Behavioural fields", len(portfolio.columns) - 2)
         metric_columns[2].metric("Latest snapshot", str(portfolio.iloc[-1, 1]) if portfolio.shape[1] > 1 else "Available")
@@ -1065,90 +862,39 @@ with tab_portfolio:
             column for column in portfolio.select_dtypes(include="number").columns if column != "customer_id"
         ]
         st.bar_chart(portfolio[behavioural_columns].mean().rename("Average").reset_index(), x="index", y="Average")
-        st.dataframe(portfolio.head(100), hide_index=True)
+        st.dataframe(portfolio.head(100), hide_index=True, use_container_width=True)
 
 with tab_validation:
-    st.subheader("Home Credit default-risk model")
+    st.subheader("Home Credit default-risk model (Pillar 2 Benchmark)")
     if not HOME_CREDIT_METRICS_PATH.exists() or not HOME_CREDIT_MODEL_PATH.exists():
-        st.info("Train the Home Credit model to display its held-out evaluation metrics.")
+        st.info("Train the Home Credit model to display held-out evaluation metrics.")
     else:
         metrics = load_metrics(HOME_CREDIT_METRICS_PATH, HOME_CREDIT_METRICS_PATH.stat().st_mtime_ns)
         final_test = metrics.get("final_test_metrics", metrics)
         protocol = metrics.get("evaluation_protocol", {})
         display_recall = final_test.get("recall", final_test.get("recall_at_0_50", 0.0))
         display_precision = final_test.get("precision", final_test.get("precision_at_0_50", 0.0))
-        metric_columns = st.columns(3, border=True)
+
+        metric_columns = st.columns(4)
         metric_columns[0].metric("Final-test ROC-AUC", f"{final_test['roc_auc']:.3f}")
         metric_columns[1].metric("Final-test PR-AUC", f"{final_test['pr_auc']:.3f}")
-        metric_columns[2].metric("Features", f"{metrics['feature_count']}")
-        metric_columns = st.columns(2, border=True)
-        metric_columns[0].metric(f"Default recall at {final_test.get('threshold', 0.50):.2f}", f"{display_recall:.1%}")
-        metric_columns[1].metric(f"Default precision at {final_test.get('threshold', 0.50):.2f}", f"{display_precision:.1%}")
+        metric_columns[2].metric(f"Recall ({final_test.get('threshold', 0.50):.2f})", f"{display_recall:.1%}")
+        metric_columns[3].metric(f"Precision ({final_test.get('threshold', 0.50):.2f})", f"{display_precision:.1%}")
+
         st.caption(
-            f"Selected model: {metrics['model_name']}. Final-test Brier score: {final_test['brier_score']:.3f} "
-            "(lower indicates better probability accuracy)."
+            f"Selected model: **{metrics['model_name']}** ({metrics['feature_count']} features). "
+            f"Brier score: {final_test['brier_score']:.3f}. Evaluated on {protocol.get('test_rows', final_test.get('test_rows', 'Not available')):,} held-out test applicants."
         )
-        st.caption(
-            "This model uses Home Credit repayment and credit-history features; it is not applied directly to raw uploaded statements. "
-            f"Final test set: {protocol.get('test_rows', final_test.get('test_rows', 'Not available')):,} held-out applicants. "
-            "Model, calibration, and threshold were selected on separate training/validation data."
-        )
-        if HOME_CREDIT_COMPARISON_PATH.exists():
-            comparison = load_metrics(
-                HOME_CREDIT_COMPARISON_PATH, HOME_CREDIT_COMPARISON_PATH.stat().st_mtime_ns
-            )
-            benchmark = pd.DataFrame(comparison["models"])
-            with st.container(border=True):
-                st.subheader("Candidate model benchmark")
-                st.caption(
-                    "All candidates used the same validation applicants. Selection order: "
-                    f"{comparison['selection_metric']}."
-                )
-                st.bar_chart(benchmark, x="model", y=["roc_auc", "pr_auc"])
-                st.dataframe(benchmark, hide_index=True)
-        if HOME_CREDIT_THRESHOLD_PATH.exists():
-            threshold_report = load_metrics(
-                HOME_CREDIT_THRESHOLD_PATH, HOME_CREDIT_THRESHOLD_PATH.stat().st_mtime_ns
-            )
-            thresholds = pd.DataFrame(threshold_report.get("final_test_rows", threshold_report.get("rows", [])))
-            with st.container(border=True):
-                st.subheader("Selected-model threshold analysis")
-                st.caption(
-                    f"Threshold was selected on validation data using this policy: {threshold_report.get('risk_policy', 'Not available')} "
-                    "Final-test values are descriptive only and do not create an automatic lending rule."
-                )
-                st.line_chart(thresholds, x="threshold", y=["recall", "precision", "flagged_applicant_rate"])
-                st.dataframe(thresholds, hide_index=True)
-        if HOME_CREDIT_CALIBRATION_PATH.exists():
-            calibration = load_metrics(
-                HOME_CREDIT_CALIBRATION_PATH, HOME_CREDIT_CALIBRATION_PATH.stat().st_mtime_ns
-            )
-            final_calibration = calibration.get("final_test", calibration)
-            reliability = pd.DataFrame(final_calibration["reliability"])
-            with st.container(border=True):
-                st.subheader("Probability calibration")
-                st.caption(
-                    f"Selected calibration: {calibration.get('selected_method', calibration.get('method', 'Not available'))}. "
-                    f"Final-test Brier score: {final_calibration.get('brier_score', calibration.get('calibrated_brier_score')):.3f}. "
-                    "Calibration method was selected on validation data."
-                )
-                st.line_chart(reliability, x="mean_predicted_risk", y="observed_default_rate")
-                st.dataframe(reliability, hide_index=True)
+
         importance_path = Path("reports/home_credit_global_importance.json")
         if importance_path.exists():
-            importance = pd.DataFrame(json.loads(importance_path.read_text(encoding="utf-8")))
-            st.subheader("Global feature importance (Tree gain)")
-            st.bar_chart(importance, x="feature", y="gain_importance")
-            st.caption("Gain importance shows which credit-history and repayment features contributed most across the model. It is a global explanation, not an individual lending decision explanation.")
-
             from src.models.explain_home_credit import explain_local_factors
-            st.subheader("Explainable risk factor attribution (Exact Tree-SHAP)")
+            st.markdown("#### Explainable Risk Factor Attribution (Exact Tree-SHAP)")
             st.caption("Path-dependent Shapley values computed via LightGBM booster. Features with positive SHAP push predicted risk higher, while negative values act as protective buffers.")
-            
-            # Reuse pre-computed Tree-SHAP attributions from the active applicant bureau scoring if available
+
             if st.session_state.get("bureau_result") and "local_explanations" in st.session_state.bureau_result:
                 local_exp = st.session_state.bureau_result["local_explanations"]
-                st.info(f"Displaying Tree-SHAP attributions for the active applicant profile (CIBIL: {cibil_score}, Age: {applicant_age}).")
+                st.info(f"Displaying Tree-SHAP attributions for active applicant profile (CIBIL: {cibil_score}, Age: {applicant_age}).")
             else:
                 mock_applicant = {
                     "EXT_SOURCE_3": 0.28,
@@ -1166,11 +912,11 @@ with tab_validation:
             with c_risk:
                 st.markdown("**Top risk-increasing drivers (Positive SHAP):**")
                 for r in local_exp["top_risk_increasing_factors"]:
-                    st.write(f"- :red[{r['feature']}]: {r['impact']}")
+                    st.write(f"- <span style='color:#F87171;'>{r['feature']}</span>: {r['impact']}", unsafe_allow_html=True)
             with c_prot:
                 st.markdown("**Top protective factors (Negative SHAP):**")
                 for p in local_exp["top_risk_decreasing_factors"]:
-                    st.write(f"- :green[{p['feature']}]: {p['impact']}")
+                    st.write(f"- <span style='color:#34D399;'>{p['feature']}</span>: {p['impact']}", unsafe_allow_html=True)
 
 with tab_decision:
     st.subheader("Indicative assessment and officer review")
@@ -1194,21 +940,21 @@ with tab_decision:
         salary_verification=st.session_state.get("salary_verification"),
     )
     if decision.affordability_score is None:
-        st.info("Upload and analyse a statement to generate an affordability assessment.")
+        st.info("Upload and analyse a bank statement to generate an affordability assessment.")
     else:
         if decision.pillar_summary and decision.pillar_summary.get("mode", "").startswith("Dual-Pillar"):
             with st.container(border=True):
-                st.subheader("Unified Dual-Pillar Credit Evaluation Matrix")
+                st.markdown("#### Unified Dual-Pillar Credit Evaluation Matrix")
                 col_p1, col_p2, col_q = st.columns(3)
                 col_p1.metric(
                     "Pillar 1: Statement Affordability",
-                    f"{decision.affordability_score}/100",
+                    f"{decision.affordability_score} / 100",
                     decision.pillar_summary.get("affordability_band", ""),
                 )
                 col_p2.metric(
                     "Pillar 2: Bureau Default Risk",
                     f"{bureau_prob:.1%}",
-                    f"{decision.pillar_summary.get('bureau_risk_band', '')} (Input Completeness: {completeness_pct})",
+                    f"{decision.pillar_summary.get('bureau_risk_band', '')} (Completeness: {completeness_pct})",
                     delta_color="inverse",
                 )
                 col_q.metric(
@@ -1230,15 +976,15 @@ with tab_decision:
                 q_row1_col1, q_row1_col2 = st.columns(2)
                 with q_row1_col1:
                     is_active = active_quad == "Quadrant 1"
-                    card_border = "matrix-card-active" if is_active else ""
+                    card_border = "policy-quadrant-card-active" if is_active else ""
                     st.markdown(
                         f"""
-                        <div class="matrix-card {card_border}">
+                        <div class="policy-quadrant-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#34D399;">Q1: Meets Indicative Criteria</b>
-                                <span class="badge-pill badge-pill-green">{'ACTIVE' if is_active else 'Score ≥ 70 & PD < 20%'}</span>
+                                <span class="status-pill status-pill-green">{'ACTIVE PLACEMENT' if is_active else 'Score ≥ 70 & PD < 20%'}</span>
                             </div>
-                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:6px;">
                                 Robust statement cash-flow surplus accompanied by acceptable external credit bureau default risk.
                             </div>
                         </div>
@@ -1247,15 +993,15 @@ with tab_decision:
                     )
                 with q_row1_col2:
                     is_active = active_quad == "Quadrant 2"
-                    card_border = "matrix-card-active" if is_active else ""
+                    card_border = "policy-quadrant-card-active" if is_active else ""
                     st.markdown(
                         f"""
-                        <div class="matrix-card {card_border}">
+                        <div class="policy-quadrant-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#FBBF24;">Q2: Manual Review (Bureau Risk)</b>
-                                <span class="badge-pill badge-pill-amber">{'ACTIVE' if is_active else 'Score ≥ 70 & PD ≥ 20%'}</span>
+                                <span class="status-pill status-pill-amber">{'ACTIVE PLACEMENT' if is_active else 'Score ≥ 70 & PD ≥ 20%'}</span>
                             </div>
-                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:6px;">
                                 Statement surplus appears viable, but external trade lines or delinquency history signal elevated default risk.
                             </div>
                         </div>
@@ -1266,15 +1012,15 @@ with tab_decision:
                 q_row2_col1, q_row2_col2 = st.columns(2)
                 with q_row2_col1:
                     is_active = active_quad == "Quadrant 3"
-                    card_border = "matrix-card-active" if is_active else ""
+                    card_border = "policy-quadrant-card-active" if is_active else ""
                     st.markdown(
                         f"""
-                        <div class="matrix-card {card_border}">
+                        <div class="policy-quadrant-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#FBBF24;">Q3: Manual Review (Cashflow Alert)</b>
-                                <span class="badge-pill badge-pill-amber">{'ACTIVE' if is_active else 'Score < 70 & PD < 20%'}</span>
+                                <span class="status-pill status-pill-amber">{'ACTIVE PLACEMENT' if is_active else 'Score < 70 & PD < 20%'}</span>
                             </div>
-                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:6px;">
                                 Clean bureau history, but statement indicates thin cash reserves, volatile income, or heavy expense burden.
                             </div>
                         </div>
@@ -1283,15 +1029,15 @@ with tab_decision:
                     )
                 with q_row2_col2:
                     is_active = active_quad == "Quadrant 4"
-                    card_border = "matrix-card-active" if is_active else ""
+                    card_border = "policy-quadrant-card-active" if is_active else ""
                     st.markdown(
                         f"""
-                        <div class="matrix-card {card_border}">
+                        <div class="policy-quadrant-card {card_border}">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <b style="color:#F87171;">Q4: Decline (Dual Risk Elevation)</b>
-                                <span class="badge-pill badge-pill-red">{'ACTIVE' if is_active else 'Score < 70 & PD ≥ 20%'}</span>
+                                <span class="status-pill status-pill-red">{'ACTIVE PLACEMENT' if is_active else 'Score < 70 & PD ≥ 20%'}</span>
                             </div>
-                            <div style="font-size:0.83rem; color:#94A3B8; margin-top:4px;">
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:6px;">
                                 Depleted cash flow and high debt obligations compounded by elevated external credit default risk.
                             </div>
                         </div>
@@ -1299,8 +1045,8 @@ with tab_decision:
                         unsafe_allow_html=True,
                     )
         else:
-            decision_columns = st.columns(2, border=True)
-            decision_columns[0].metric("Behavioural affordability score", f"{decision.affordability_score}/100")
+            decision_columns = st.columns(2)
+            decision_columns[0].metric("Behavioural affordability score", f"{decision.affordability_score} / 100")
             decision_columns[1].metric("System recommendation", decision.recommendation)
 
         if st.session_state.get("salary_verification"):
@@ -1308,134 +1054,38 @@ with tab_decision:
             if sv.is_verified:
                 st.success(f"Cross-document salary verification: {sv.status}")
             else:
-                st.warning(f"Cross-document salary safeguard: {sv.status} (Declared: ₹{sv.slip_net_salary:,.0f} vs Statement: ₹{sv.detected_statement_salary:,.0f})")
+                st.warning(f"Cross-document salary safeguard: {sv.status} (Declared: INR {sv.slip_net_salary:,.0f} vs Statement: INR {sv.detected_statement_salary:,.0f})")
 
         st.caption(f"Rule version: {decision.rule_version}. Policy safeguards override numerical scores when evidence is contradictory or incomplete.")
 
-        # ── Animated score breakdown bars (replaces st.dataframe) ────────────
-        affordability_components = decision.affordability_components or {}
-        if affordability_components:
-            max_points_total = max(abs(v) for v in affordability_components.values()) if affordability_components else 1
-            bar_items_html = ""
-            for comp_name, comp_pts in affordability_components.items():
-                pct = min(100.0, abs(comp_pts) / max(1, max_points_total) * 100)
-                bar_color = "#1DB954" if comp_pts >= 0 else "#E91429"
-                bar_bg    = "rgba(29,185,84,0.10)" if comp_pts >= 0 else "rgba(233,20,41,0.10)"
-                pts_label = f"+{comp_pts:.1f}" if comp_pts >= 0 else f"{comp_pts:.1f}"
-                label_clean = comp_name.replace("_", " ").title()
-                bar_items_html += f"""
-                <div class="bar-row">
-                  <div class="bar-label">{label_clean}</div>
-                  <div class="bar-track">
-                    <div class="bar-fill" style="width:{pct:.1f}%; background:{bar_color}; box-shadow: 0 0 8px {bar_color}44;"></div>
-                  </div>
-                  <div class="bar-pts" style="color:{bar_color};">{pts_label}</div>
-                </div>
-                """
-            total_pts = sum(affordability_components.values())
-            total_color = "#1DB954" if total_pts >= 0 else "#E91429"
-            n_bars = len(affordability_components)
-            bar_height = 50 + n_bars * 46
-            _score_bars_html = f"""
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-              * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-              body {{ background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }}
-              .score-container {{
-                background: #141414;
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 14px;
-                padding: 1.2rem 1.5rem;
-              }}
-              .score-header {{
-                display: flex; justify-content: space-between; align-items: center;
-                margin-bottom: 1rem;
-                padding-bottom: 0.7rem;
-                border-bottom: 1px solid rgba(255,255,255,0.06);
-              }}
-              .score-title {{
-                font-size: 0.68rem;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                color: #555;
-              }}
-              .score-total {{
-                font-size: 1.3rem;
-                font-weight: 900;
-                color: {total_color};
-                letter-spacing: -0.03em;
-              }}
-              .bar-row {{
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 0.55rem;
-              }}
-              .bar-label {{
-                font-size: 0.76rem;
-                color: #aaa;
-                font-weight: 500;
-                width: 220px;
-                flex-shrink: 0;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }}
-              .bar-track {{
-                flex: 1;
-                height: 6px;
-                background: rgba(255,255,255,0.06);
-                border-radius: 3px;
-                overflow: hidden;
-              }}
-              .bar-fill {{
-                height: 100%;
-                border-radius: 3px;
-                width: 0%;
-                transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
-              }}
-              .bar-pts {{
-                font-size: 0.77rem;
-                font-weight: 700;
-                width: 46px;
-                text-align: right;
-                flex-shrink: 0;
-              }}
-            </style>
-            <div class="score-container">
-              <div class="score-header">
-                <div class="score-title">Affordability Score Breakdown</div>
-                <div class="score-total">{decision.affordability_score} / 100</div>
-              </div>
-              {bar_items_html}
-            </div>
-            <script>
-              // Trigger bar animations after render
-              setTimeout(function() {{
-                document.querySelectorAll('.bar-fill').forEach(function(el) {{
-                  el.style.width = el.style.width; // reflow
-                }});
-              }}, 80);
-            </script>
-            """
-            components.html(_score_bars_html, height=bar_height)
-        else:
-            st.caption("No affordability score components available.")
+        with st.container(border=True):
+            st.markdown("#### Affordability Score Component Breakdown")
+            comp_cols = st.columns(2)
+            comps = list((decision.affordability_components or {}).items())
+            mid = len(comps) // 2
+            with comp_cols[0]:
+                for comp, pts in comps[:mid]:
+                    pts_color = "#34D399" if pts >= 0 else "#F87171"
+                    sign = "+" if pts >= 0 else ""
+                    st.markdown(
+                        f"<div style='display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04);'>"
+                        f"<span style='color:#94A3B8; font-size:0.82rem;'>{comp.replace('_', ' ').title()}</span>"
+                        f"<span style='color:{pts_color}; font-weight:700; font-family:monospace;'>{sign}{pts:.1f} pts</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+            with comp_cols[1]:
+                for comp, pts in comps[mid:]:
+                    pts_color = "#34D399" if pts >= 0 else "#F87171"
+                    sign = "+" if pts >= 0 else ""
+                    st.markdown(
+                        f"<div style='display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04);'>"
+                        f"<span style='color:#94A3B8; font-size:0.82rem;'>{comp.replace('_', ' ').title()}</span>"
+                        f"<span style='color:{pts_color}; font-weight:700; font-family:monospace;'>{sign}{pts:.1f} pts</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
-        with st.expander("Active policy and safeguards"):
-            st.caption(POLICY["evidence_status"])
-            st.dataframe(
-                pd.DataFrame([
-                    {"Component": label.replace("_", " ").title(), "Rationale": rationale}
-                    for label, rationale in POLICY["component_rationale"].items()
-                ]),
-                hide_index=True,
-            )
-            st.caption(
-                "Safeguards override the numerical score when evidence is incomplete or contradictory. "
-                "See docs/affordability_policy.md for the complete policy definition."
-            )
         if st.session_state.features:
             metrics_actionable = calculate_actionable_affordability_metrics(
                 st.session_state.features,
@@ -1444,21 +1094,16 @@ with tab_decision:
             )
             with st.expander("Actionable loan metrics, stress scenarios & counterfactuals", expanded=True):
                 col_a, col_b = st.columns(2)
-                col_a.metric("Max sustainable EMI", f"₹{metrics_actionable['max_sustainable_monthly_emi']:,.0f}")
-                col_b.metric("Max indicative loan", f"₹{metrics_actionable['max_indicative_loan_amount']:,.0f}")
-                st.caption(f"Stress test (Income -20%, Expense +10%, Rate +2%): Stressed max loan = ₹{metrics_actionable['stressed_max_indicative_loan']:,.0f}")
-                
-                # Interactive Scenario Stress Testing Lab
-                st.markdown("---")
-                st.subheader("Scenario Shock and Stress Testing Lab")
-                st.caption("Interactively test applicant loan capacity and risk stability under adverse economic shocks.")
-                
+                col_a.metric("Max sustainable EMI", f"INR {metrics_actionable['max_sustainable_monthly_emi']:,.0f}")
+                col_b.metric("Max indicative loan", f"INR {metrics_actionable['max_indicative_loan_amount']:,.0f}")
+                st.caption(f"Stress baseline (Income -20%, Expense +10%, Rate +2%): Stressed max loan = INR {metrics_actionable['stressed_max_indicative_loan']:,.0f}")
+
+                st.markdown("#### Scenario Shock & Stress Testing Lab")
                 col_s1, col_s2, col_s3 = st.columns(3)
                 shock_inc = col_s1.slider("Income Shock", min_value=-50, max_value=0, value=-20, step=5, format="%d%%", key="slider_shock_inc")
                 shock_exp = col_s2.slider("Expense Inflation", min_value=0, max_value=50, value=10, step=5, format="+%d%%", key="slider_shock_exp")
                 shock_rate = col_s3.slider("Interest Rate Hike", min_value=0.0, max_value=6.0, value=2.0, step=0.5, format="+%.1f%%", key="slider_shock_rate")
 
-                # Dynamic calculations under shock
                 feat = st.session_state.features
                 st_inc = max(0.0, float(feat["average_monthly_income"]) * (1.0 + shock_inc / 100.0))
                 st_exp = float(feat["average_monthly_expense"]) * (1.0 + shock_exp / 100.0)
@@ -1475,29 +1120,27 @@ with tab_decision:
                 col_res1, col_res2, col_res3 = st.columns(3)
                 col_res1.metric(
                     "Stressed Monthly Surplus",
-                    f"₹{st_surplus:,.0f}",
+                    f"INR {st_surplus:,.0f}",
                     delta=f"{st_surplus - feat['monthly_surplus']:,.0f}",
                 )
                 col_res2.metric(
                     "Stressed Max Sustainable EMI",
-                    f"₹{st_max_emi:,.0f}",
+                    f"INR {st_max_emi:,.0f}",
                     delta=f"{st_max_emi - metrics_actionable['max_sustainable_monthly_emi']:,.0f}",
                 )
                 base_loan = metrics_actionable['max_indicative_loan_amount']
                 retention_pct = (st_max_loan / base_loan) if base_loan > 0 else 0.0
                 col_res3.metric(
                     "Stressed Loan Capacity",
-                    f"₹{st_max_loan:,.0f}",
+                    f"INR {st_max_loan:,.0f}",
                     delta=f"{retention_pct:.0%} retention",
                 )
 
-                st.subheader("Counterfactual guidance")
+                st.markdown("#### Counterfactual guidance")
                 for item in metrics_actionable["counterfactual_guidance"]:
                     st.write(f"- {item}")
-    for reason in decision.reasons:
-        st.write(f"- {reason}")
 
-    st.subheader("Officer final action")
+    st.markdown("#### Officer Final Action")
     override = st.selectbox("Officer final action", ["Pending review", "Approve", "Refer for more documents", "Decline"])
     rationale = st.text_area("Officer rationale", placeholder="Record the final decision and supporting evidence.")
     expected_action = {
@@ -1514,11 +1157,12 @@ with tab_decision:
     model_version = "Not available"
     if HOME_CREDIT_METRICS_PATH.exists():
         model_version = str(load_metrics(HOME_CREDIT_METRICS_PATH, HOME_CREDIT_METRICS_PATH.stat().st_mtime_ns).get("model_name", "Home Credit benchmark"))
+
     with st.container(border=True):
-        st.subheader("Decision summary")
+        st.markdown("#### Decision Summary")
         st.table({
             "Applicant ID": applicant_id or "Not supplied",
-            "Requested amount": f"₹{requested_amount:,.0f}",
+            "Requested amount": f"INR {requested_amount:,.0f}",
             "Statement-quality score": f"{quality_score:.0%}" if quality_score is not None else "Not available",
             "Affordability score": f"{decision.affordability_score}/100" if decision.affordability_score is not None else "Not available",
             "Bureau default risk": f"{bureau_prob:.1%}" if bureau_prob is not None else "Not evaluated",
@@ -1536,6 +1180,7 @@ with tab_decision:
                 "Download decision summary CSV", safe_export_csv(summary_rows),
                 "decision_summary.csv", "text/csv",
             )
+
     can_create_record = consent and override != "Pending review" and (not is_override or bool(rationale.strip()))
     if not consent:
         st.info("Confirm applicant consent and choose an officer action to create a decision record.")
@@ -1568,13 +1213,13 @@ with tab_decision:
         saved_meta = save_case_record(record)
         st.markdown(
             f"""
-            <div class="spotify-card" style="border-left: 4px solid #1DB954; margin-top: 1rem;">
-                <div style="display:flex; align-items:center; gap: 0.5rem; margin-bottom: 4px;">
-                    <span class="badge-pill badge-pill-green">Cryptographically Sealed</span>
-                    <span style="font-weight:700; color:#FFFFFF;">Case ID: {saved_meta['case_id']}</span>
+            <div style="background:#111726; border-left:4px solid #10B981; border-radius:8px; padding:1rem 1.2rem; margin-top:1rem;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span class="status-pill status-pill-green">SEALED</span>
+                    <span style="font-weight:700; color:#F8FAFC;">Case ID: {saved_meta['case_id']}</span>
                 </div>
-                <div style="font-family: monospace; font-size: 0.8rem; color: #B3B3B3;">
-                    SHA-256 Digest: {saved_meta['record_hash'][:24]}... (Anchored to HEAD_HASH)
+                <div style="font-family:'JetBrains Mono', monospace; font-size:0.75rem; color:#94A3B8;">
+                    SHA-256 Digest: {saved_meta['record_hash'][:32]}... (Anchored to HEAD_HASH)
                 </div>
             </div>
             """,
@@ -1587,9 +1232,9 @@ with tab_decision:
         if col_btn.button("Verify Hash Chain"):
             valid, msg = verify_hash_chain()
             if valid:
-                col_res.markdown(f'<span class="badge-pill badge-pill-green">Chain Verified</span> {msg}', unsafe_allow_html=True)
+                col_res.markdown(f'<span class="status-pill status-pill-green">Chain Verified</span> {msg}', unsafe_allow_html=True)
             else:
-                col_res.markdown(f'<span class="badge-pill badge-pill-red">Tamper Detected</span> {msg}', unsafe_allow_html=True)
+                col_res.markdown(f'<span class="status-pill status-pill-red">Tamper Detected</span> {msg}', unsafe_allow_html=True)
         recent_cases = get_case_records(limit=10)
         if recent_cases:
             st.caption("Recent sealed case records in SQLite database:")
@@ -1609,6 +1254,7 @@ with tab_decision:
                     for r in recent_cases
                 ]),
                 hide_index=True,
+                use_container_width=True,
             )
         else:
             st.info("No cases sealed in SQLite database yet.")
