@@ -8,11 +8,9 @@
 
 **by**
 
-| Register Number | Student Name |
-| :--- | :--- |
-| **23BDS0025** | **ROHITH S M** |
-| **23BDS0029** | **ADHARSH S** |
-| **23BDS0186** | **GOWTHAM KUMAR D** |
+**23BDS0025    ROHITH S M**  
+**23BDS0029    ADHARSH S**  
+**23BDS0186    GOWTHAM KUMAR D**  
 
 *(Names arranged by Register Number)*
 
@@ -37,9 +35,8 @@ We further declare that the work reported in this project has not been submitted
 
 **Signatures of the Candidates:**
 
-| ..................................................... | ..................................................... | ..................................................... |
-| :---: | :---: | :---: |
-| **Rohith S M** (23BDS0025) | **Adharsh S** (23BDS0029) | **Gowtham Kumar D** (23BDS0186) |
+.......................................          .......................................          .......................................  
+**Rohith S M (23BDS0025)**                       **Adharsh S (23BDS0029)**                       **Gowtham Kumar D (23BDS0186)**  
 
 ---
 
@@ -52,21 +49,30 @@ The contents of this report have not been submitted and will not be submitted ei
 **Place** : Vellore  
 **Date**  : 25 October 2026  
 
-.....................................................  
-**Signature of the Guide**  
-**Dr. Viswanathan A**  
-Associate Professor, SCOPE  
+<br>
+
+<div align="right">
+.....................................................<br>
+<b>Signature of the Guide</b><br>
+<b>Dr. Viswanathan A</b><br>
+Associate Professor, SCOPE
+</div>
+
+<br>
 
 **Examiners:**
 
-| ..................................................... | ..................................................... |
-| :---: | :---: |
-| **Internal Examiner** | **External Examiner** |
+1. ..................................................... &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; 2. .....................................................  
+&emsp;&emsp;&emsp; **Internal Examiner** &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; **External Examiner**  
 
-**Head of the Department**  
-Department of Computer Science and Engineering (Data Science)  
-School of Computer Science and Engineering (SCOPE)  
-Vellore Institute of Technology, Vellore  
+<br>
+
+<div align="center">
+<b>Head of the Department</b><br>
+Department of Computer Science and Engineering (Data Science)<br>
+School of Computer Science and Engineering (SCOPE)<br>
+Vellore Institute of Technology, Vellore
+</div>  
 
 ---
 
