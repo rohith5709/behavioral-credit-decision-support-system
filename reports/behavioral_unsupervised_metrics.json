@@ -1,0 +1,23 @@
+{
+  "model_name": "Behavioral_Unsupervised_ML_Suite",
+  "clustering_algorithm": "KMeans(k=4)",
+  "anomaly_algorithm": "IsolationForest(n_estimators=150, contamination=0.05)",
+  "training_samples": 2000,
+  "features": [
+    "savings_ratio",
+    "income_variation_ratio",
+    "expense_variation_ratio",
+    "effective_monthly_emi",
+    "cash_withdrawal_share",
+    "low_balance_day_count",
+    "emergency_buffer_months",
+    "uncertain_transaction_share"
+  ],
+  "clusters_distribution": {
+    "0": 631,
+    "1": 298,
+    "2": 694,
+    "3": 377
+  },
+  "artifact_path": "C:\\Users\\rohit\\Documents\\Codex\\2026-09-06\\whi\\credit_decision_system\\models\\behavioral_unsupervised_bundle.joblib"
+}
