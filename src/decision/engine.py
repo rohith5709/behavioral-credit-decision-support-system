@@ -22,7 +22,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.config import HIGH_RISK_THRESHOLD, LOW_RISK_THRESHOLD, MAX_EMI_TO_INCOME, MIN_EXTRACTION_CONFIDENCE
-from src.decision.affordability import AFFORDABILITY_RULE_VERSION, POLICY, assess_affordability
+from src.decision.affordability import (
+    AFFORDABILITY_RULE_VERSION,
+    POLICY,
+    assess_affordability,
+    evaluate_data_quality_gates,
+)
 from src.documents.statement_csv import StatementQualityReport
 
 # Behavioral ML thresholds
@@ -41,6 +46,7 @@ class Decision:
     rule_version: str | None = None
     pillar_summary: dict[str, Any] | None = None
     behavioral_ml: dict[str, Any] | None = None
+    unsupervised_ml: dict[str, Any] | None = None
 
 
 def _behavioral_risk_band_label(pd_: float) -> str:
@@ -100,10 +106,26 @@ def recommend(
         assessment = assess_affordability(statement_features, quality_report)
         hard_stop_reasons = assessment.mandatory_review_reasons
 
-        # Run behavioral ML prediction
+        # Run behavioral ML prediction (Pillar 1)
         behavioral_result = predict_behavioral_risk(statement_features)
         behavioral_scored = behavioral_result.get("status") == "scored"
         behavioral_pd = behavioral_result.get("default_probability") if behavioral_scored else None
+
+        # Run unsupervised anomaly detection (Tier 3 ML safeguard)
+        from src.models.behavioral_unsupervised import score_behavioral_profile
+        try:
+            unsupervised_result = score_behavioral_profile(statement_features)
+            is_anomaly = bool(
+                unsupervised_result.get("status") == "scored"
+                and unsupervised_result.get("anomaly_detection", {}).get("is_anomaly")
+            )
+            anomaly_score = float(
+                unsupervised_result.get("anomaly_detection", {}).get("anomaly_score", 0.0)
+            )
+        except Exception:
+            unsupervised_result = None
+            is_anomaly = False
+            anomaly_score = 0.0
 
         # Build reason list from hard stops and salary safeguard
         reasons: list[str] = list(hard_stop_reasons) + salary_slip_reasons
@@ -172,13 +194,21 @@ def recommend(
                 recommendation = "Manual review"
                 quadrant = "Low Behavioral Risk / Elevated Bureau Risk (Manual Review - Divergent Evidence)"
             else:
-                # Both pillars LOW — recommend approval
-                reasons.append(
-                    f"Dual-Pillar Alignment: Behavioral ML default risk is LOW ({behavioral_pd:.1%}) "
-                    f"and bureau credit risk is low ({bureau_pd:.1%})."
-                )
-                recommendation = "Meets indicative affordability criteria"
-                quadrant = "Low Behavioral Risk / Low Bureau Risk (Recommend Approval)"
+                # Both pillars LOW — check Isolation Forest anomaly
+                if is_anomaly:
+                    reasons.append(
+                        f"Unsupervised ML Anomaly Safeguard: Isolation Forest detected atypical cash flow volatility "
+                        f"(Anomaly score: {anomaly_score:.2f}). Officer review required."
+                    )
+                    recommendation = "Manual review"
+                    quadrant = "Low Risk / ML Anomaly Alert (Manual Review)"
+                else:
+                    reasons.append(
+                        f"Dual-Pillar Alignment: Behavioral ML default risk is LOW ({behavioral_pd:.1%}) "
+                        f"and bureau credit risk is low ({bureau_pd:.1%})."
+                    )
+                    recommendation = "Meets indicative affordability criteria"
+                    quadrant = "Low Behavioral Risk / Low Bureau Risk (Recommend Approval)"
 
             pillar_summary = {
                 "mode": "Dual-Pillar (Behavioral ML x Bureau Default Risk)",
@@ -204,6 +234,7 @@ def recommend(
                 rule_version=AFFORDABILITY_RULE_VERSION,
                 pillar_summary=pillar_summary,
                 behavioral_ml=behavioral_result,
+                unsupervised_ml=unsupervised_result,
             )
 
         # ------------------------------------------------------------------
@@ -243,10 +274,17 @@ def recommend(
                 )
                 recommendation = "Manual review"
             else:
-                reasons.append(
-                    f"Behavioral ML: Predicted default probability {behavioral_pd:.1%} is in the LOW-risk band."
-                )
-                recommendation = "Meets indicative affordability criteria"
+                if is_anomaly:
+                    reasons.append(
+                        f"Unsupervised ML Anomaly Safeguard: Isolation Forest detected atypical cash flow volatility "
+                        f"(Anomaly score: {anomaly_score:.2f}). Officer review required."
+                    )
+                    recommendation = "Manual review"
+                else:
+                    reasons.append(
+                        f"Behavioral ML: Predicted default probability {behavioral_pd:.1%} is in the LOW-risk band."
+                    )
+                    recommendation = "Meets indicative affordability criteria"
 
             pillar_summary = {
                 "mode": "Single-Pillar (Behavioral ML)",
@@ -270,6 +308,7 @@ def recommend(
                 rule_version=AFFORDABILITY_RULE_VERSION,
                 pillar_summary=pillar_summary,
                 behavioral_ml=behavioral_result,
+                unsupervised_ml=unsupervised_result,
             )
 
         # ------------------------------------------------------------------
@@ -311,6 +350,7 @@ def recommend(
                 "bureau_risk": "Not evaluated",
             },
             behavioral_ml=behavioral_result,
+            unsupervised_ml=unsupervised_result,
         )
 
     # ------------------------------------------------------------------

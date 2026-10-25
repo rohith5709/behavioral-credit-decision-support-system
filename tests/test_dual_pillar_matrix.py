@@ -165,3 +165,44 @@ class TestDualPillarMLMatrix:
         )
         assert decision.behavioral_ml is not None
         assert "status" in decision.behavioral_ml
+
+    def test_decision_has_unsupervised_ml_field(self):
+        """Decision dataclass must carry the unsupervised_ml result."""
+        decision = recommend(
+            model_probability=0.08,
+            statement_features=_features(),
+            quality_report=_quality_report(),
+        )
+        assert decision.unsupervised_ml is not None
+        assert "status" in decision.unsupervised_ml
+
+    def test_isolation_forest_anomaly_overrides_clean_ml_profile_to_manual_review(self):
+        """Tier 3 Anomaly Safeguard: Outlier volatility forces officer review despite low PD."""
+        outlier_features = {
+            "savings_ratio": 0.10,
+            "emi_to_income_ratio": 0.10,
+            "salary_income_months": 3.0,
+            "salary_consistency_ratio": 0.02,
+            "expense_variation_ratio": 2.5,
+            "balance_volatility_ratio": 4.0,
+            "has_balance_history": 1.0,
+            "utility_payment_regularity": 1.0,
+            "cash_withdrawal_share": 0.95,
+            "low_balance_day_count": 25.0,
+        }
+        decision = recommend(
+            model_probability=0.08,  # Bureau low
+            statement_features=outlier_features,
+            quality_report=_quality_report(),
+        )
+        assert decision.recommendation == "Manual review"
+        assert any("Unsupervised ML Anomaly Safeguard" in r for r in decision.reasons)
+
+    def test_evaluate_data_quality_gates_directly(self):
+        """evaluate_data_quality_gates function correctly identifies hard stops."""
+        from src.decision.affordability import evaluate_data_quality_gates
+        clean_reasons = evaluate_data_quality_gates(_features(), _quality_report())
+        assert clean_reasons == []
+
+        failing_reasons = evaluate_data_quality_gates(_features(emi_to_income_ratio=0.60), _quality_report())
+        assert any("EMI burden exceeds" in r for r in failing_reasons)

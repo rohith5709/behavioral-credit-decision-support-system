@@ -44,7 +44,8 @@ def build_case_summary_rows(
         {"Section": "Request", "Metric": "Requested amount", "Value": f"₹{requested_amount:,.0f}", "Meaning": "Officer-entered request."},
         {"Section": "Assessment", "Metric": "Visual status", "Value": status, "Meaning": "Visual aid only; read the written recommendation and flags."},
         {"Section": "Assessment", "Metric": "System recommendation", "Value": decision.recommendation, "Meaning": "Not a final lending decision."},
-        {"Section": "Assessment", "Metric": "Affordability score", "Value": f"{decision.affordability_score}/100" if decision.affordability_score is not None else "Not available", "Meaning": "Transparent policy score."},
+        {"Section": "Assessment", "Metric": "Behavioral ML Default Risk", "Value": f"{decision.behavioral_ml.get('default_probability', 0.0):.1%} ({decision.behavioral_ml.get('risk_band', 'N/A')})" if decision.behavioral_ml and decision.behavioral_ml.get("status") == "scored" else "Not evaluated", "Meaning": "Supervised Random Forest trained on UCI payment histories."},
+        {"Section": "Assessment", "Metric": "Affordability score", "Value": f"{decision.affordability_score}/100" if decision.affordability_score is not None else "Not available", "Meaning": "Transparent policy score (reference only)."},
         {"Section": "Assessment", "Metric": "Policy version", "Value": decision.rule_version or "Not available", "Meaning": "Versioned transparent affordability policy."},
         {"Section": "Evidence", "Metric": "Statement quality", "Value": f"{quality_report.score:.0%}", "Meaning": "CSV completeness and consistency; not source-document authenticity."},
         {"Section": "Evidence", "Metric": "Observed months", "Value": quality_report.observed_months, "Meaning": "Months represented by valid transactions."},
@@ -85,7 +86,12 @@ def build_decision_record(
     review_flags = extract_review_flags(decision.reasons)
 
     # Check for unsupervised behavioral anomaly detection
-    prof = behavioral_profile or base_record.get("behavioral_unsupervised_ml") or base_record.get("behavioral_ml")
+    prof = (
+        behavioral_profile
+        or base_record.get("behavioral_unsupervised_ml")
+        or getattr(decision, "unsupervised_ml", None)
+        or base_record.get("behavioral_ml")
+    )
     if prof and isinstance(prof, dict):
         anom = prof.get("anomaly_detection", {})
         if anom.get("is_anomaly"):
@@ -93,6 +99,8 @@ def build_decision_record(
             flag_msg = f"Unsupervised ML Anomaly Safeguard: Isolation Forest detected atypical cash flow volatility (Anomaly score: {anom_score:.2f})."
             if flag_msg not in review_flags:
                 review_flags.append(flag_msg)
+
+    bml = getattr(decision, "behavioral_ml", None) or base_record.get("behavioral_ml")
 
     enriched = base_record | {
         "record_type": "prototype_decision_log",
@@ -108,4 +116,6 @@ def build_decision_record(
     }
     if prof:
         enriched["behavioral_unsupervised_ml"] = prof
+    if bml:
+        enriched["behavioral_ml"] = bml
     return enriched

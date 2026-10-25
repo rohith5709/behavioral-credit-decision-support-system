@@ -53,8 +53,75 @@ def _stability_points(expense_variation: float, balance_volatility: float, has_b
     return variation_points + balance_points
 
 
+def evaluate_data_quality_gates(
+    features: dict[str, float],
+    quality_report: StatementQualityReport | None,
+) -> list[str]:
+    """Evaluate non-scoring data validity pre-qualification gates and hard stops.
+
+    These are hard validity gates that verify data sufficiency and accounting integrity
+    before machine-learning scoring. They are NOT scoring components.
+    """
+    mandatory_review_reasons: list[str] = []
+    hard_stops = POLICY["hard_stops"]
+
+    # Gate 1: Statement temporal horizon
+    if not quality_report or quality_report.observed_months < hard_stops["minimum_months"]:
+        mandatory_review_reasons.append("Fewer than three months of transactions are available.")
+
+    # Gate 2: Integrity and parse quality threshold
+    if not quality_report or quality_report.score < hard_stops["minimum_quality_score"]:
+        mandatory_review_reasons.append("Statement data quality is below the 80% review threshold.")
+
+    # Gate 3: Recognised recurring income verification
+    salary_months = float(features.get("salary_income_months", 0.0))
+    recognised_income_months = float(features.get("recognised_income_months", salary_months))
+    if recognised_income_months == 0:
+        mandatory_review_reasons.append("No recognised recurring income was found in the uploaded statement.")
+
+    # Gate 4: Mathematical debit/credit balance transitions
+    if quality_report and quality_report.balance_mismatch_rows:
+        mandatory_review_reasons.append("Balance transitions contradict the stated debit/credit values.")
+
+    # Gate 5: Critical existing EMI burden cap (>50%)
+    emi_ratio = float(features.get("emi_to_income_ratio", 0.0))
+    if emi_ratio > hard_stops["maximum_existing_emi_ratio"]:
+        mandatory_review_reasons.append("EMI burden exceeds the 50% critical review threshold.")
+
+    # Gate 6: Combined existing + proposed EMI cap
+    if float(features.get("proposed_emi_to_income_ratio", 0.0)) > hard_stops["maximum_proposed_emi_ratio"]:
+        mandatory_review_reasons.append("Existing plus proposed EMI burden exceeds the critical review threshold.")
+
+    # Gate 7: Declared vs detected EMI discrepancy
+    if (
+        float(features.get("emi_difference_amount", 0.0)) >= hard_stops["emi_discrepancy_minimum_amount"]
+        and float(features.get("emi_discrepancy_ratio", 0.0)) > hard_stops["emi_discrepancy_tolerance"]
+    ):
+        mandatory_review_reasons.append(
+            "Declared EMI and detected EMI-payment occurrence differ materially; officer verification is required."
+        )
+
+    # Gate 8: Emergency liquid cash reserve threshold
+    if (
+        bool(features.get("has_balance_history", 0.0))
+        and "emergency_buffer_months" in features
+        and float(features["emergency_buffer_months"]) < hard_stops["minimum_emergency_buffer_months"]
+    ):
+        mandatory_review_reasons.append("Emergency cash buffer is below the policy review threshold.")
+
+    # Gate 9: Unlabelled / ambiguous category share
+    if float(features.get("uncertain_transaction_share", 0.0)) > hard_stops["maximum_uncertain_transaction_share"]:
+        mandatory_review_reasons.append("Too many transaction categories require officer review.")
+
+    return mandatory_review_reasons
+
+
 def assess_affordability(features: dict[str, float], quality_report: StatementQualityReport | None) -> AffordabilityAssessment:
-    """Score uploaded-statement evidence using documented rule components and safeguards."""
+    """Score uploaded-statement evidence for reference, and extract data-quality hard stops.
+
+    NOTE: The 0-100 numerical score is retained strictly for officer visual reference
+    and backward compatibility. Primary credit decisions are governed by behavioral ML.
+    """
     savings_ratio = float(features.get("savings_ratio", 0.0))
     emi_ratio = float(features.get("emi_to_income_ratio", 0.0))
     salary_months = float(features.get("salary_income_months", 0.0))
@@ -83,38 +150,7 @@ def assess_affordability(features: dict[str, float], quality_report: StatementQu
     if utility_regularity:
         reasons.append(f"Utility payments appeared in {utility_regularity:.0%} of observed months.")
 
-    mandatory_review_reasons: list[str] = []
-    hard_stops = POLICY["hard_stops"]
-    if not quality_report or quality_report.observed_months < hard_stops["minimum_months"]:
-        mandatory_review_reasons.append("Fewer than three months of transactions are available.")
-    if not quality_report or quality_report.score < hard_stops["minimum_quality_score"]:
-        mandatory_review_reasons.append("Statement data quality is below the 80% review threshold.")
-    if recognised_income_months == 0:
-        mandatory_review_reasons.append("No recognised recurring income was found in the uploaded statement.")
-    if quality_report and quality_report.balance_mismatch_rows:
-        mandatory_review_reasons.append("Balance transitions contradict the stated debit/credit values.")
-    if emi_ratio > hard_stops["maximum_existing_emi_ratio"]:
-        mandatory_review_reasons.append("EMI burden exceeds the 50% critical review threshold.")
-    if float(features.get("proposed_emi_to_income_ratio", 0.0)) > hard_stops["maximum_proposed_emi_ratio"]:
-        mandatory_review_reasons.append("Existing plus proposed EMI burden exceeds the critical review threshold.")
-    if (
-        float(features.get("emi_difference_amount", 0.0)) >= hard_stops["emi_discrepancy_minimum_amount"]
-        and float(features.get("emi_discrepancy_ratio", 0.0)) > hard_stops["emi_discrepancy_tolerance"]
-    ):
-        mandatory_review_reasons.append(
-            "Declared EMI and detected EMI-payment occurrence differ materially; officer verification is required."
-        )
-    # Older or externally supplied feature dictionaries may not include this
-    # Phase-6 measure. Missing evidence must be shown as unavailable, not
-    # silently converted to a zero-month buffer and treated as a hard stop.
-    if (
-        bool(features.get("has_balance_history", 0.0))
-        and "emergency_buffer_months" in features
-        and float(features["emergency_buffer_months"]) < hard_stops["minimum_emergency_buffer_months"]
-    ):
-        mandatory_review_reasons.append("Emergency cash buffer is below the policy review threshold.")
-    if float(features.get("uncertain_transaction_share", 0.0)) > hard_stops["maximum_uncertain_transaction_share"]:
-        mandatory_review_reasons.append("Too many transaction categories require officer review.")
+    mandatory_review_reasons = evaluate_data_quality_gates(features, quality_report)
     return AffordabilityAssessment(score, components, reasons, mandatory_review_reasons)
 
 
