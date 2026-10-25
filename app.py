@@ -39,6 +39,7 @@ from src.reporting.case_summary import (
 from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure, build_gauge_figure
 from src.models.applicant_scoring import predict_applicant_risk
 from src.models.behavioral_unsupervised import score_behavioral_profile
+from src.models.behavioral_prediction import predict_behavioral_risk, load_behavioral_model
 from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
 
 # Initialize SQLite database for decision records
@@ -511,18 +512,62 @@ with tab_summary:
         quality = st.session_state.quality_report
         visual_status, status_message = case_status(decision.recommendation)
 
-        # Primary Gauge & Status Summary
+        # Primary ML Risk Card, Data Quality Gauge & Status Summary
+        behavioral_ml_result = predict_behavioral_risk(st.session_state.features)
         gauge_col1, gauge_col2, gauge_col3 = st.columns([1, 1, 1.2])
         with gauge_col1:
-            fig_aff = build_gauge_figure(
-                value=float(decision.affordability_score or 0.0),
-                title="Affordability Score",
-                max_value=100.0,
-                threshold_low=45.0,
-                threshold_high=70.0,
-                suffix=" / 100",
-            )
-            st.plotly_chart(fig_aff, use_container_width=True)
+            # Behavioral ML Risk Card (replaces rule-based affordability gauge)
+            if behavioral_ml_result.get("status") == "scored":
+                bml_pd = behavioral_ml_result["default_probability"]
+                bml_band = behavioral_ml_result["risk_band"]
+                bml_pct = f"{bml_pd:.1%}"
+                band_color_map = {
+                    "LOW": "#10B981",
+                    "MODERATE": "#FBBF24",
+                    "ELEVATED": "#F97316",
+                    "HIGH": "#EF4444",
+                }
+                band_color = band_color_map.get(bml_band, "#94A3B8")
+                st.markdown(
+                    f"""
+                    <div style="background:#111726; border:1px solid rgba(255,255,255,0.08); border-radius:10px;
+                                padding:1.1rem 1.2rem; height:190px; display:flex; flex-direction:column; justify-content:center;">
+                        <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;
+                                    color:#94A3B8; margin-bottom:6px;">
+                            Behavioral ML Default Risk
+                        </div>
+                        <div style="font-size:2rem; font-weight:800; color:{band_color}; letter-spacing:-0.03em;">
+                            {bml_pct}
+                        </div>
+                        <div style="margin-top:6px;">
+                            <span class="status-pill" style="background:{band_color}22; color:{band_color};
+                                  border:1px solid {band_color}55; font-size:0.78rem;">
+                                {bml_band} RISK
+                            </span>
+                        </div>
+                        <div style="font-size:0.75rem; color:#64748B; margin-top:6px;">
+                            Random Forest (UCI, 30k records)
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="background:#111726; border:1px solid rgba(255,255,255,0.08); border-radius:10px;
+                                padding:1.1rem 1.2rem; height:190px; display:flex; flex-direction:column; justify-content:center;">
+                        <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;
+                                    color:#94A3B8; margin-bottom:8px;">
+                            Behavioral ML Default Risk
+                        </div>
+                        <div style="font-size:0.9rem; color:#64748B;">
+                            Model not available. Run training script to enable.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
         with gauge_col2:
             fig_q = build_gauge_figure(
                 value=float((quality.score or 0.0) * 100.0),
@@ -1056,16 +1101,48 @@ with tab_decision:
         salary_verification=st.session_state.get("salary_verification"),
     )
     if decision.affordability_score is None:
-        st.info("Upload and analyse a bank statement to generate an affordability assessment.")
+        st.info("Upload and analyse a bank statement to generate a behavioral risk assessment.")
     else:
         if decision.pillar_summary and decision.pillar_summary.get("mode", "").startswith("Dual-Pillar"):
             with st.container(border=True):
                 st.markdown("#### Unified Dual-Pillar Credit Evaluation Matrix")
+
+                # Behavioral ML risk card
+                bml_dec = decision.behavioral_ml or {}
+                if bml_dec.get("status") == "scored":
+                    bml_pd = bml_dec["default_probability"]
+                    bml_band = bml_dec["risk_band"]
+                    _bml_colors = {"LOW": "#10B981", "MODERATE": "#FBBF24", "ELEVATED": "#F97316", "HIGH": "#EF4444"}
+                    _bml_color = _bml_colors.get(bml_band, "#94A3B8")
+                    with st.container(border=True):
+                        st.markdown("**Pillar 1 — Behavioral ML Default Risk (Random Forest, UCI 30k records)**")
+                        bml_c1, bml_c2, bml_c3 = st.columns(3)
+                        bml_c1.metric("Behavioral ML P(default)", f"{bml_pd:.1%}", bml_band)
+                        bml_c2.metric("Model Confidence", f"{bml_dec.get('confidence', 0.0):.1%}")
+                        bml_c3.metric("Model Version", bml_dec.get("model_version", "N/A"))
+                        if bml_dec.get("top_features"):
+                            st.markdown(
+                                "<div style='font-size:0.78rem; color:#94A3B8; margin-top:4px;'>Top behavioral drivers:</div>",
+                                unsafe_allow_html=True,
+                            )
+                            driver_cols = st.columns(len(bml_dec["top_features"]))
+                            for col, feat in zip(driver_cols, bml_dec["top_features"]):
+                                col.markdown(
+                                    f"<div style='background:#0B0E14; border:1px solid rgba(255,255,255,0.07); "
+                                    f"border-radius:8px; padding:8px 10px;'>"
+                                    f"<div style='font-size:0.7rem; color:#64748B; text-transform:uppercase;'>{feat['label']}</div>"
+                                    f"<div style='font-size:0.85rem; font-weight:700; color:#F8FAFC; margin-top:2px;'>{feat['observed_value']}</div>"
+                                    f"</div>",
+                                    unsafe_allow_html=True,
+                                )
+
                 col_p1, col_p2, col_q = st.columns(3)
+                bml_pd_display = bml_dec.get("default_probability")
                 col_p1.metric(
-                    "Pillar 1: Statement Affordability",
-                    f"{decision.affordability_score} / 100",
-                    decision.pillar_summary.get("affordability_band", ""),
+                    "Pillar 1: Behavioral ML Risk",
+                    f"{bml_pd_display:.1%}" if bml_pd_display is not None else "N/A",
+                    decision.pillar_summary.get("behavioral_ml_band", "") if decision.pillar_summary else "",
+                    delta_color="inverse",
                 )
                 col_p2.metric(
                     "Pillar 2: Bureau Default Risk",
@@ -1076,12 +1153,16 @@ with tab_decision:
                 col_q.metric(
                     "Matrix Quadrant",
                     decision.recommendation,
-                    decision.pillar_summary.get("quadrant", ""),
+                    decision.pillar_summary.get("quadrant", "") if decision.pillar_summary else "",
                 )
 
-                # Visual 2x2 Decision Matrix Map
+                # Visual 2x2 Decision Matrix Map (uses behavioral ML PD for Pillar 1 axis)
+                bml_for_matrix = bml_dec.get("default_probability") if bml_dec.get("status") == "scored" else None
+                # Convert behavioral PD to a 0-100 scale for the matrix figure
+                # (matrix figure expects affordability_score 0-100; behavioral PD inverted: low PD = high score)
+                behavioral_score_for_matrix = int((1.0 - bml_for_matrix) * 100) if bml_for_matrix is not None else (decision.affordability_score or 50)
                 fig_matrix = build_decision_matrix_figure(
-                    affordability_score=decision.affordability_score,
+                    affordability_score=behavioral_score_for_matrix,
                     bureau_probability=bureau_prob,
                     applicant_id=applicant_id or "Current Applicant",
                 )
@@ -1175,7 +1256,40 @@ with tab_decision:
         st.caption(f"Rule version: {decision.rule_version}. Policy safeguards override numerical scores when evidence is contradictory or incomplete.")
 
         with st.container(border=True):
-            st.markdown("#### Affordability Score Component Breakdown")
+            st.markdown("#### Behavioral ML Risk — Trained Model Output")
+            bml_dec6 = decision.behavioral_ml or {}
+            if bml_dec6.get("status") == "scored":
+                bml_pd6 = bml_dec6["default_probability"]
+                bml_band6 = bml_dec6["risk_band"]
+                _colors6 = {"LOW": "#10B981", "MODERATE": "#FBBF24", "ELEVATED": "#F97316", "HIGH": "#EF4444"}
+                _color6 = _colors6.get(bml_band6, "#94A3B8")
+                bml_d1, bml_d2, bml_d3, bml_d4 = st.columns(4)
+                bml_d1.metric("P(Default) — ML", f"{bml_pd6:.1%}")
+                bml_d2.metric("Risk Band", bml_band6)
+                bml_d3.metric("Model Confidence", f"{bml_dec6.get('confidence', 0.0):.1%}")
+                bml_d4.metric("Model", bml_dec6.get("model_name", "N/A"))
+                if bml_dec6.get("top_features"):
+                    st.markdown(
+                        "<div style='font-size:0.78rem; color:#94A3B8; margin-top:8px; margin-bottom:4px;'>Top behavioral feature drivers:</div>",
+                        unsafe_allow_html=True,
+                    )
+                    for feat in bml_dec6["top_features"]:
+                        st.markdown(
+                            f"<div style='display:flex; justify-content:space-between; padding:5px 8px; "
+                            f"border-bottom:1px solid rgba(255,255,255,0.04);'>"
+                            f"<span style='color:#94A3B8; font-size:0.82rem;'>{feat['label']}</span>"
+                            f"<span style='color:#F8FAFC; font-weight:700; font-family:monospace;'>{feat['observed_value']}</span>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+            else:
+                st.caption("Behavioral ML model not available. Train the model to display predictions.")
+
+        with st.expander("Reference: Rule-Score Component Breakdown (officer reference only)"):
+            st.caption(
+                "The 0-100 rule score below is retained as an officer reference and evidence summary tool. "
+                "It does not drive the ML recommendation above."
+            )
             comp_cols = st.columns(2)
             comps = list((decision.affordability_components or {}).items())
             mid = len(comps) // 2
