@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.config import (
@@ -42,6 +43,7 @@ from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_ho
 from src.models.applicant_scoring import predict_applicant_risk
 from src.models.behavioral_unsupervised import score_behavioral_profile
 from src.models.behavioral_prediction import predict_behavioral_risk, load_behavioral_model
+from src.features.behavioral_ml_features import map_statement_to_behavioral_features, get_feature_mapping_documentation
 from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
 
 # Initialize SQLite database for decision records
@@ -920,6 +922,168 @@ with tab_profile:
                                 "Variance vs Centroid": f"{(app_val - coh_val):+.2f}",
                             })
                         st.dataframe(pd.DataFrame(dim_rows), hide_index=True, use_container_width=True)
+
+        # Pillar 1 Supervised Behavioral ML Feature Bridge & What-If Simulation Lab
+        with st.container(border=True):
+            st.markdown("#### Pillar 1: Supervised Behavioral ML Bridge & Counterfactual Simulator")
+            st.caption(
+                "Inspect the 15-dimensional UCI-calibrated behavioral input vector derived from bank statement cash flows, "
+                "or interactively simulate counterfactual credit scenarios."
+            )
+            
+            bml_pred_actual = predict_behavioral_risk(features)
+            
+            with st.expander("Behavioral Feature Bridge Inspector (Statement to 15 UCI Model Inputs)", expanded=False):
+                bridge_df = map_statement_to_behavioral_features(features)
+                mapping_specs = get_feature_mapping_documentation()
+                bridge_rows = []
+                for col in bridge_df.columns:
+                    val = bridge_df[col].iloc[0]
+                    spec = mapping_specs.get(col, {})
+                    bridge_rows.append({
+                        "UCI Model Dimension": col,
+                        "Mapped Value": f"{val:,.2f}" if abs(val) >= 10 else f"{val:.4f}",
+                        "Statement Signal Source": spec.get("statement_source", "Derived"),
+                        "Bounds": spec.get("bounds", "N/A"),
+                        "Clinical Risk Rationale": spec.get("rationale", ""),
+                    })
+                st.dataframe(pd.DataFrame(bridge_rows), hide_index=True, use_container_width=True)
+
+            # Interactive What-If Counterfactual Sandbox
+            st.markdown("##### Interactive What-If Behavioral ML Simulation Sandbox")
+            st.caption("Adjust key behavioral levers below to simulate real-time default probability adjustments under the trained Random Forest model.")
+
+            cur_sav = float(features.get("savings_ratio", 0.0) or 0.0)
+            cur_emi = float(features.get("emi_to_income_ratio", 0.0) or 0.0)
+            cur_inc_vol = float(features.get("income_variation_ratio", 0.0) or 0.0)
+            cur_buf = float(features.get("emergency_buffer_months", 0.0) or 0.0)
+            cur_low_bal = float(features.get("low_balance_day_count", 0.0) or 0.0)
+
+            sim_c1, sim_c2, sim_c3 = st.columns(3)
+            with sim_c1:
+                sim_sav = st.slider(
+                    "Simulated Savings Ratio",
+                    min_value=-50,
+                    max_value=80,
+                    value=int(round(max(min(cur_sav, 0.8), -0.5) * 100)),
+                    step=5,
+                    format="%d%%",
+                    key="sim_sav_ratio",
+                ) / 100.0
+                sim_emi = st.slider(
+                    "Simulated EMI-to-Income",
+                    min_value=0,
+                    max_value=80,
+                    value=int(round(max(min(cur_emi, 0.8), 0.0) * 100)),
+                    step=5,
+                    format="%d%%",
+                    key="sim_emi_ratio",
+                ) / 100.0
+
+            with sim_c2:
+                sim_inc_vol = st.slider(
+                    "Simulated Income Volatility",
+                    min_value=0,
+                    max_value=100,
+                    value=int(round(max(min(cur_inc_vol, 1.0), 0.0) * 100)),
+                    step=5,
+                    format="%d%%",
+                    key="sim_inc_vol",
+                ) / 100.0
+                sim_buf = st.slider(
+                    "Simulated Emergency Buffer",
+                    min_value=0.0,
+                    max_value=12.0,
+                    value=float(round(max(min(cur_buf, 12.0), 0.0), 1)),
+                    step=0.5,
+                    format="%.1f mo",
+                    key="sim_buf_months",
+                )
+
+            with sim_c3:
+                sim_low_bal = st.slider(
+                    "Simulated Low-Balance Days",
+                    min_value=0,
+                    max_value=30,
+                    value=int(round(max(min(cur_low_bal, 30.0), 0.0))),
+                    step=1,
+                    format="%d days",
+                    key="sim_low_bal_days",
+                )
+
+            # Re-run ML model on modified features
+            sim_features = dict(features)
+            sim_features["savings_ratio"] = sim_sav
+            sim_features["emi_to_income_ratio"] = sim_emi
+            sim_features["income_variation_ratio"] = sim_inc_vol
+            sim_features["emergency_buffer_months"] = sim_buf
+            sim_features["low_balance_day_count"] = float(sim_low_bal)
+
+            avg_inc = float(features.get("average_monthly_income", 0.0) or 0.0)
+            sim_features["monthly_surplus"] = avg_inc * sim_sav
+            sim_features["minimum_monthly_surplus"] = avg_inc * (sim_sav - 0.1)
+
+            sim_pred = predict_behavioral_risk(sim_features)
+
+            if bml_pred_actual.get("status") == "scored" and sim_pred.get("status") == "scored":
+                base_pd = bml_pred_actual["default_probability"]
+                sim_pd = sim_pred["default_probability"]
+                delta_pd = sim_pd - base_pd
+
+                band_colors = {"LOW": "#10B981", "MODERATE": "#FBBF24", "ELEVATED": "#F97316", "HIGH": "#EF4444"}
+                sim_color = band_colors.get(sim_pred["risk_band"], "#94A3B8")
+
+                st_res1, st_res2, st_res3, st_res4 = st.columns(4)
+                st_res1.metric("Baseline P(Default)", f"{base_pd:.1%}", bml_pred_actual["risk_band"])
+                st_res2.metric(
+                    "Simulated P(Default)",
+                    f"{sim_pd:.1%}",
+                    delta=f"{delta_pd:+.1%}",
+                    delta_color="inverse",
+                )
+                st_res3.metric("Simulated Risk Band", sim_pred["risk_band"])
+                st_res4.metric("Model Confidence", f"{sim_pred.get('confidence', 0.0):.1%}")
+
+                if sim_pd < 0.15 and base_pd >= 0.15:
+                    st.success("Target Achieved: Counterfactual profile successfully qualifies for LOW risk tier (<15% default probability).")
+                elif sim_pd < base_pd:
+                    st.info(f"Favorable Adjustment: Simulated intervention reduces default risk by {abs(delta_pd):.1%}.")
+                elif sim_pd > base_pd:
+                    st.warning(f"Adverse Adjustment: Stressed conditions increase predicted default probability by {delta_pd:.1%}.")
+
+            # Reliability Diagram (Platt Calibration)
+            if BEHAVIORAL_METRICS_PATH.exists():
+                with st.expander("Platt Sigmoid Probability Calibration Curve (Reliability Diagram)", expanded=False):
+                    bm_raw = load_metrics(BEHAVIORAL_METRICS_PATH, BEHAVIORAL_METRICS_PATH.stat().st_mtime_ns)
+                    cal_data = bm_raw.get("calibration_curve", {})
+                    f_pos = cal_data.get("fraction_of_positives", [])
+                    m_pred = cal_data.get("mean_predicted_value", [])
+                    if f_pos and m_pred:
+                        fig_cal = go.Figure()
+                        fig_cal.add_trace(go.Scatter(
+                            x=[0, 1], y=[0, 1],
+                            mode="lines",
+                            name="Perfect Calibration",
+                            line=dict(color="#64748B", dash="dash"),
+                        ))
+                        fig_cal.add_trace(go.Scatter(
+                            x=m_pred, y=f_pos,
+                            mode="lines+markers",
+                            name="Calibrated Random Forest",
+                            line=dict(color="#10B981", width=2),
+                            marker=dict(size=7, color="#10B981"),
+                        ))
+                        fig_cal.update_layout(
+                            title="Reliability Curve (Fraction of Positives vs Mean Predicted Value)",
+                            xaxis_title="Mean Predicted Probability",
+                            yaxis_title="Fraction of Positives (Observed Default Rate)",
+                            paper_bgcolor="#111726",
+                            plot_bgcolor="#111726",
+                            font=dict(color="#E2E8F0", family="Inter"),
+                            margin=dict(l=40, r=40, t=50, b=40),
+                            height=320,
+                        )
+                        st.plotly_chart(fig_cal, use_container_width=True)
 
         with st.container(border=True):
             st.markdown("#### Primary Monthly Cash Flow Indicators")
