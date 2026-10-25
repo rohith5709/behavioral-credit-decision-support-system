@@ -38,6 +38,7 @@ from src.reporting.case_summary import (
 )
 from src.reporting.matrix_viz import build_decision_matrix_figure, build_shap_horizontal_bar_figure, build_gauge_figure
 from src.models.applicant_scoring import predict_applicant_risk
+from src.models.behavioral_unsupervised import score_behavioral_profile
 from src.data.db import init_db, save_case_record, get_case_records, verify_hash_chain
 
 # Initialize SQLite database for decision records
@@ -758,6 +759,57 @@ with tab_profile:
         st.info("Upload and analyse a bank statement first.")
     else:
         features = st.session_state.features
+
+        # Unsupervised Machine Learning Behavioral Persona & Anomaly Intelligence
+        behavioral_ml = score_behavioral_profile(features)
+        if behavioral_ml.get("status") == "scored":
+            persona = behavioral_ml["behavioral_persona"]
+            anomaly = behavioral_ml["anomaly_detection"]
+            with st.container(border=True):
+                st.markdown("#### Unsupervised Behavioral ML Intelligence (K-Means & Isolation Forest)")
+                ml_col1, ml_col2 = st.columns([1.5, 1])
+                with ml_col1:
+                    st.markdown(
+                        f"""
+                        <div style="background:#111726; border-left:4px solid {persona['color']}; border-radius:8px; padding:1rem 1.2rem; margin-bottom:0.5rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:#94A3B8;">Behavioral Spending Persona</span>
+                                <span class="status-pill" style="background:{persona['color']}22; color:{persona['color']}; border:1px solid {persona['color']}55;">
+                                    {persona['risk_profile']} &middot; {persona['fit_confidence']:.0%} Fit
+                                </span>
+                            </div>
+                            <div style="font-size:1.15rem; font-weight:800; color:#F8FAFC; margin-top:4px;">
+                                {persona['name']}
+                            </div>
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:4px; line-height:1.4;">
+                                {persona['archetype']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with ml_col2:
+                    anom_color = "#EF4444" if anomaly["is_anomaly"] else "#10B981"
+                    st.markdown(
+                        f"""
+                        <div style="background:#111726; border-left:4px solid {anom_color}; border-radius:8px; padding:1rem 1.2rem; margin-bottom:0.5rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:#94A3B8;">Isolation Forest Anomaly Check</span>
+                                <span class="status-pill" style="background:{anom_color}22; color:{anom_color}; border:1px solid {anom_color}55;">
+                                    Score: {anomaly['anomaly_score']:.2f}
+                                </span>
+                            </div>
+                            <div style="font-size:1.05rem; font-weight:800; color:#F8FAFC; margin-top:4px;">
+                                {anomaly['verdict']}
+                            </div>
+                            <div style="font-size:0.8rem; color:#94A3B8; margin-top:4px; line-height:1.4;">
+                                {'Elevated non-linear deviation detected in spending or withdrawal pattern.' if anomaly['is_anomaly'] else 'Transaction distribution is consistent with typical peer cohorts.'}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
         with st.container(border=True):
             st.markdown("#### Primary Monthly Cash Flow Indicators")
             r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
