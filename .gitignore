@@ -52,6 +52,8 @@ reports/*
 !reports/transaction_nlp_metrics.json
 !reports/behavioral_unsupervised_metrics.json
 !reports/behavioral_prediction_metrics.json
+!reports/figures/
+!reports/figures/*
 
 # Editor and operating-system files
 .vscode/
