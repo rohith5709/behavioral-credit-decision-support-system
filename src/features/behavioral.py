@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import numpy as np
 import pandas as pd
+import joblib
 
 UCI_PAY_COLUMNS = [f"PAY_{month}" for month in (0, 2, 3, 4, 5, 6)]
 UCI_BILL_COLUMNS = [f"BILL_AMT{month}" for month in range(1, 7)]
@@ -14,6 +15,7 @@ UCI_PAYMENT_COLUMNS = [f"PAY_AMT{month}" for month in range(1, 7)]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CATEGORY_CONFIG_PATH = PROJECT_ROOT / "config" / "category_rules.json"
+NLP_MODEL_PATH = PROJECT_ROOT / "models" / "transaction_nlp_pipeline.joblib"
 _category_config = json.loads(CATEGORY_CONFIG_PATH.read_text(encoding="utf-8"))
 CATEGORY_RULES: tuple[tuple[str, str], ...] = tuple(
     (label, "|".join(patterns)) for label, patterns in _category_config["categories"].items()
@@ -99,11 +101,29 @@ def apply_bulk_category_override(
     return result, int(changed.sum())
 
 
-def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFrame:
-    """Assign transparent, description-based categories to statement transactions.
+_nlp_pipeline_cache = None
 
-    The rules are intentionally local and inspectable. They are behavioural labels,
-    not a machine-learning prediction or a claim about the purpose of a transaction.
+
+def load_nlp_pipeline():
+    """Load and memory-cache the transaction NLP classification pipeline."""
+    global _nlp_pipeline_cache
+    if _nlp_pipeline_cache is not None:
+        return _nlp_pipeline_cache
+    if NLP_MODEL_PATH.exists():
+        try:
+            bundle = joblib.load(NLP_MODEL_PATH)
+            _nlp_pipeline_cache = bundle.get("pipeline")
+        except Exception:
+            _nlp_pipeline_cache = None
+    return _nlp_pipeline_cache
+
+
+def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Assign hybrid rule-based and NLP machine-learning categories to transactions.
+
+    Exact regex rules identify deterministic channels (e.g. salary, loan disbursal),
+    while the trained TF-IDF + Calibrated Linear model categorises messy merchant descriptions
+    and provides genuine probabilistic confidence scores.
     """
     required = {"description", "debit", "credit"}
     missing = required.difference(transactions.columns)
@@ -121,20 +141,54 @@ def categorise_statement_transactions(transactions: pd.DataFrame) -> pd.DataFram
         result["is_essential"] = result["category"].isin(ESSENTIAL_CATEGORIES)
         result["is_discretionary"] = result["category"].eq("Shopping/discretionary")
         return result
+
     description = result["description"].fillna("").astype(str).str.lower()
     category = pd.Series("Other", index=result.index, dtype="object")
     match_count = pd.Series(0, index=result.index, dtype="int64")
+
+    # Step 1: Rule-based matching for deterministic accounting categories
     for label, pattern in CATEGORY_RULES:
         matches = description.str.contains(pattern, case=False, regex=True, na=False)
         match_count += matches.astype(int)
         category.loc[matches & category.eq("Other")] = label
 
-    # Unlabelled credits should not be presented as discretionary spending.
+    # Unlabelled credits are treated conservatively as Income/other
     category.loc[(result["credit"] > 0) & (category == "Other")] = "Income/other"
+
+    # Step 2: Apply Machine Learning (NLP Model) to augment/generalise unlabelled transactions
+    nlp_model = load_nlp_pipeline()
+    confidences = np.where(match_count.eq(1), 1.0, np.where(match_count.gt(1), 0.5, 0.0))
+    review_status = np.where(match_count.eq(1), "Rule match", "Uncertain / needs review")
+
+    if nlp_model is not None:
+        try:
+            # Predict for rows where rules were uncertain or unlabelled
+            uncertain_mask = category.isin(["Other", "Income/other"]) | match_count.eq(0)
+            if uncertain_mask.any():
+                texts_to_predict = result.loc[uncertain_mask, "description"].fillna("").astype(str).tolist()
+                preds = nlp_model.predict(texts_to_predict)
+                probs = nlp_model.predict_proba(texts_to_predict)
+                max_probs = np.max(probs, axis=1)
+
+                for idx, (row_idx, _) in enumerate(result.loc[uncertain_mask].iterrows()):
+                    prob = max_probs[idx]
+                    pred_cat = preds[idx]
+                    # Require a strong, decisive confidence (>= 65%) to override "Other"
+                    if prob >= 0.65:
+                        # Prevent misclassifying credit transactions as discretionary expense
+                        if result.loc[row_idx, "credit"] > 0 and pred_cat in ESSENTIAL_CATEGORIES | {"Shopping/discretionary"}:
+                            continue
+                        category.loc[row_idx] = pred_cat
+                        confidences[result.index.get_loc(row_idx)] = round(float(prob), 3)
+                        review_status[result.index.get_loc(row_idx)] = f"NLP ML match ({prob:.0%})"
+                        match_count.loc[row_idx] = 1
+        except Exception:
+            pass
+
     result["category"] = category
     result["original_category"] = category
-    result["category_confidence"] = np.where(match_count.eq(1), 1.0, np.where(match_count.gt(1), 0.5, 0.0))
-    result["category_review_status"] = np.where(match_count.eq(1), "Rule match", "Uncertain / needs review")
+    result["category_confidence"] = confidences
+    result["category_review_status"] = review_status
     result["category_match_count"] = match_count
     result["is_essential"] = result["category"].isin(ESSENTIAL_CATEGORIES)
     result["is_discretionary"] = result["category"].eq("Shopping/discretionary")
