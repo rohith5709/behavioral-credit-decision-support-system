@@ -9,53 +9,63 @@
 
 ---
 
-## 1. Full System Architecture
+## 1. Full System Architecture (Tri-Tier ML & Deterministic Safeguards)
 
 ```mermaid
 flowchart TD
     subgraph Inputs["Inputs"]
-        CSV["🗂️ Bank Statement\n(CSV / Digital PDF)"]
-        SLIP["📄 Salary Slip\n(Net pay + Employer)"]
-        BUREAU["👤 Officer Bureau Profile\n(CIBIL, Age, Tenure, Active Loans, Overdue Days)"]
-        HC["🏦 Home Credit Dataset\n(246k applicants, 61 features)"]
+        CSV["Bank Statement (CSV / Digital PDF)"]
+        SLIP["Salary Slip (Net pay + Employer)"]
+        BUREAU["Officer Bureau Profile (CIBIL, Age, Tenure, Active Loans, Overdue Days)"]
+        HC["Home Credit Dataset (246k applicants, 61 features)"]
     end
 
-    subgraph Pillar1["Pillar 1 — Deterministic Cash-Flow Affordability Engine"]
-        PARSE["statement_csv.py / statement_pdf.py\nParse → Normalize → Validate\n• Balance reconciliation\n• PII masking\n• Duplicate removal"]
-        CAT["behavioral.py → categorise_statement_transactions()\n4-Layer Categorisation:\n① NEFT/UPI/IMPS/NACH regex\n② Merchant normalisation\n③ Vernacular tokens (Kirana, Vetan, Kist)\n④ Uncertain fallback → Officer review"]
-        FEAT["behavioral.py → build_statement_features()\n• avg_monthly_income, avg_monthly_expense\n• savings_ratio, emi_to_income_ratio\n• income_variation, utility_regularity\n• emergency_buffer, income_trend, 23+ features"]
-        AFF["affordability.py → calculate_score()\n8 Policy Components:\n• Savings ratio      25 pts\n• EMI burden         25 pts\n• Salary consistency 20 pts\n• Expense stability  15 pts\n• Utility regularity 10 pts\n• Data quality        5 pts\nTotal: 0–100 pts\nVersion: statement-affordability-v1"]
-        VERIFY["salary_verification.py\nverify_salary_slip_cross_document()\n• Detected salary vs declared slip\n• Tolerance: 15%\n• Override safeguard on >15% mismatch"]
+    subgraph Pillar1["Pillar 1 — Statement Cash-Flow Affordability & Behavioral ML"]
+        PARSE["statement_csv.py / statement_pdf.py\nParse -> Normalize -> Validate\nBalance reconciliation | PII masking | Duplicate removal"]
+        
+        CAT["behavioral.py -> categorise_statement_transactions()\nHybrid Categorisation Engine:\n1. Deterministic accounting rules (salary, loan, tax)\n2. Tier 1 Supervised NLP Classifier (TF-IDF + Calibrated SGD)\n3. Fallback to officer review for ambiguous items"]
+        
+        FEAT["behavioral.py -> build_statement_features()\nExtracts 23+ behavioral & cash-flow indicators\nsavings_ratio, income_variation, emi_burden, emergency_buffer"]
+        
+        UNSUP["behavioral_unsupervised.py -> score_behavioral_profile()\nTier 2 Account-Level Unsupervised ML Suite:\n1. Isolation Forest (n=150, contamination=0.05) -> Cash flow anomaly check\n2. K-Means (k=4) -> Behavioral spending persona clustering"]
+        
+        AFF["affordability.py -> calculate_score()\n8 Transparent Policy Components (0-100 pts)\nMandatory safeguard hard stops override the score"]
+        
+        VERIFY["salary_verification.py -> verify_salary_slip_cross_document()\nSalary slip vs detected statement credits (15% tolerance)"]
     end
 
-    subgraph Pillar2["Pillar 2 — LightGBM Default Risk Benchmark (Home Credit)"]
-        TRAIN["benchmark_home_credit.py\nTraining Pipeline:\n• 64% train / 16% val / 20% final-test\n• Stratified split, random_state=42\n• Imputer + optional scaler fit on train only\n• Candidates: LR, LightGBM, RF (50k cap), XGBoost (50k cap)"]
-        MODEL["home_credit_lightgbm.joblib\nSelected: LightGBM (balanced)\nCalibration: Platt Scaling (logistic sigmoidal)\nFinal-test ROC-AUC: 0.774 (CI: 0.767–0.781)\nFinal-test PR-AUC: 0.266 (~3.3× lift)\nBrier Score: 0.067 (post-calibration)\nAlert Threshold: 0.20 (policy parameter)"]
-        SCORE["applicant_scoring.py → predict_applicant_risk()\nBureau Profile Mapping:\n• CIBIL 300–900 → EXT_SOURCE 0–1 (monotonic proxy)\n• age_years → DAYS_BIRTH\n• years_employed → DAYS_EMPLOYED\n• active_loans → bureau_record_count\n• overdue_days → installment_days_late\nOutputs: PD, risk_band, completeness_ratio, Tree-SHAP"]
-        SHAP["explain_home_credit.py\nexact Tree-SHAP via booster_.predict(pred_contrib=True)\n• Global gain importance\n• Local Shapley values in log-odds space\n• Top risk-increasing vs protective factors\n• lru_cache: model loaded once per session"]
+    subgraph Pillar2["Pillar 2 — Tier 3 Macro Bureau Default Risk Benchmark"]
+        TRAIN["benchmark_home_credit.py\nTraining Pipeline:\n64% train / 16% val / 20% final-test\nStratified split, random_state=42\nImputer fit strictly on train partition"]
+        
+        MODEL["home_credit_lightgbm.joblib\nSelected: LightGBM (balanced)\nPlatt Scaling calibration (sigmoidal)\nROC-AUC: 0.774 | PR-AUC: 0.266 | Brier: 0.067\nAlert Threshold: 0.20"]
+        
+        SCORE["applicant_scoring.py -> predict_applicant_risk()\nBureau Profile Mapping:\nCIBIL 300-900 -> EXT_SOURCE (monotonic proxy)\nOutputs: PD, risk_band, completeness_ratio"]
+        
+        SHAP["explain_home_credit.py\nExact Tree-SHAP via booster_.predict(pred_contrib=True)\nGlobal gain importance and local Shapley attribution"]
     end
 
-    subgraph Integration["Dual-Pillar Integration Engine"]
-        ENGINE["engine.py → recommend()\nDual-Pillar 2×2 Matrix:\n• Affordability Score vs Bureau PD\n• 4 Quadrants → Recommendation\n• Salary-slip failure → Override ALL quadrants\n• Rule version stamped on every decision"]
+    subgraph Integration["Dual-Pillar Integration & Safeguard Engine"]
+        ENGINE["engine.py -> recommend()\nUnified 2x2 Decision Matrix:\nAffordability Score vs Bureau PD\nAnomaly & Salary Safeguard Overrides\nRule version stamped on every case"]
     end
 
     subgraph Persistence["Persistence & Audit Trail"]
-        DB["data/db.py → SQLite\nSHA-256 Forward Hash Chain\n• prev_hash → SHA-256(record_json) → next_hash\n• External anchor: data/HEAD_HASH.sha256\n• DPDP Act 2023: PII stripped before hashing\n• verify_hash_chain() detects any tampering"]
+        DB["data/db.py -> SQLite Ledger\nSHA-256 Forward Hash Chain\nprev_hash -> SHA-256(record_json) -> record_hash\nExternal anchor: data/HEAD_HASH.sha256\nDPDP Act 2023 compliance (PII stripped before hashing)\nverify_hash_chain() detects tampering"]
     end
 
     subgraph UI["UI Layer — Streamlit Dashboard (app.py)"]
-        T1["Tab 1: Case Summary\n• Quality score, Affordability score\n• Surplus before/after new loan\n• Officer review checklist"]
-        T2["Tab 2: Upload & Parse\n• CSV/PDF upload\n• Column mapping\n• Salary slip cross-verification\n• Categorised transactions + overrides"]
-        T3["Tab 3: Behaviour Profile\n• 23+ feature metrics\n• Monthly cash-flow chart\n• Balance trend, category breakdown"]
-        T4["Tab 4: Synthetic Portfolio\n• simulator_behaviour_features.csv view"]
-        T5["Tab 5: ML Benchmark (Separate)\n• Model metrics, threshold curve\n• Calibration reliability diagram\n• Global gain importance chart\n• Plotly Tree-SHAP horizontal attribution"]
-        T6["Tab 6: Officer Decision\n• Plotly 2×2 Visual Matrix Map\n• 4 Quadrant Policy Cards\n• Real-Time Stress Testing Lab\n• Actionable metrics + counterfactuals\n• Officer override + rationale\n• SHA-256 sealed decision record"]
+        T1["Tab 1: Case Summary & Review Checklist\nAffordability score, surplus before/after, Isolation Forest flags"]
+        T2["Tab 2: Statement Upload & NLP Categorisation\nColumn mapping, NLP confidence pills, officer overrides"]
+        T3["Tab 3: Behaviour Profile & Persona Clusters\nK-Means persona cards, centroid diagnostics, cash-flow charts"]
+        T4["Tab 4: Synthetic Portfolio Simulation\nsimulator_behaviour_features.csv cohort analysis"]
+        T5["Tab 5: ML Benchmark & Explainability\nModel metrics, Platt calibration curve, Tree-SHAP attributions"]
+        T6["Tab 6: Officer Decision & Tamper-Evident Ledger\nPlotly 2x2 Risk Map, stress testing lab, SHA-256 sealed record"]
     end
 
     CSV --> PARSE
     SLIP --> VERIFY
-    PARSE --> CAT --> FEAT --> AFF
+    PARSE --> CAT --> FEAT --> UNSUP
     FEAT --> AFF
+    UNSUP --> AFF
     AFF --> ENGINE
     VERIFY --> ENGINE
 
@@ -118,16 +128,18 @@ flowchart LR
 | CSV Parser | `src/documents/statement_csv.py` | Multi-format bank CSV parsing with preamble skip, BOM, lakh-commas, Dr/Cr, balance reconciliation, PII masking |
 | PDF Parser | `src/documents/statement_pdf.py` | Digital native-text PDF extraction via `pdfplumber`. Fail-closed on scanned/image PDFs |
 | Salary Verifier | `src/documents/salary_verification.py` | Cross-document salary vs statement credit comparison; 15% tolerance; flags as officer safeguard |
-| Feature Engineer | `src/features/behavioral.py` | 23+ behavioural features; 4-layer categorisation; merchant group builder; officer override tracker |
+| Transaction NLP Trainer | `src/models/train_transaction_nlp.py` | Tier 1 Supervised NLP model training; TF-IDF n-grams + Calibrated Linear SGD over 1,025 curated samples across 18 classes |
+| Feature Engineer | `src/features/behavioral.py` | Hybrid transaction categorization (exact rules + Calibrated NLP classifier); 23+ behavioral & cash-flow metrics |
+| Behavioral Unsupervised Suite | `src/models/behavioral_unsupervised.py` | Tier 2 Unsupervised ML Suite; Isolation Forest (n=150, contamination=0.05) anomaly detection and K-Means (k=4) spending persona clustering |
 | Affordability Policy | `src/decision/affordability.py` | 8-component deterministic 0–100 score; safeguard override logic; actionable metric calculations |
-| Decision Engine | `src/decision/engine.py` | Unified Dual-Pillar recommend() integrating both pillars into the 2×2 matrix |
+| Decision Engine | `src/decision/engine.py` | Unified Dual-Pillar recommend() integrating both pillars and unsupervised anomaly safeguards into the 2×2 matrix |
 | Bureau Scorer | `src/models/applicant_scoring.py` | Maps officer-entered bureau profile to Home Credit model features; runs calibrated PD; returns Tree-SHAP |
 | SHAP Explainer | `src/models/explain_home_credit.py` | Exact Tree-SHAP via booster_.predict(pred_contrib=True); global gain importance; lru_cache bundle |
-| HC Trainer | `src/models/benchmark_home_credit.py` | Full Home Credit training pipeline; stratified 64/16/20 splits; candidate selection; calibration |
+| HC Trainer | `src/models/benchmark_home_credit.py` | Full Home Credit training pipeline; stratified 64/16/20 splits; candidate selection; Platt calibration |
 | Database | `src/data/db.py` | SQLite with SHA-256 forward hash chain; external anchor; DPDP Act 2023 compliance; tamper detection |
 | Matrix Viz | `src/reporting/matrix_viz.py` | Plotly 2×2 decision matrix chart; Tree-SHAP horizontal attribution chart |
-| Case Summary | `src/reporting/case_summary.py` | Decision record builder; evidence row aggregation; review flag extractor |
-| App | `app.py` | 6-tab Streamlit UI; FinTech dark CSS; all Plotly integrations; stress testing lab |
+| Case Summary | `src/reporting/case_summary.py` | Decision record builder; evidence row aggregation; review flag extractor with unsupervised anomaly integration |
+| App | `app.py` | 6-tab Streamlit UI; FinTech dark CSS; all Plotly integrations; stress testing lab; centroid diagnostics |
 | Config | `config/category_rules.json` | Version-controlled keyword rules for 18 transaction categories |
 | Config | `config/affordability_policy_v1.json` | Versioned policy component weights and thresholds |
 
@@ -140,10 +152,10 @@ flowchart LR
 
 | Boundary | What It Prevents |
 |----------|-----------------|
-| Home Credit model ≠ Statement analyser | Prevents applying features engineered for European credit bureau data to Indian cash-flow transactions |
+| Home Credit model != Statement analyser | Prevents applying features engineered for European credit bureau data to Indian cash-flow transactions |
 | Affordability score is rule-based | Enables adverse-action explanation (required by RBI Fair Lending Directions) |
-| CIBIL→EXT_SOURCE is a monotonic proxy | Conceded explicitly; marked as "indicative secondary signal" not "validated Indian default probability" |
-| Salary credits ≠ all credits | Loan disbursals, refunds, and self-transfers are explicitly excluded from income calculation |
+| CIBIL -> EXT_SOURCE is a monotonic proxy | Conceded explicitly; marked as "indicative secondary signal" not "validated Indian default probability" |
+| Salary credits != all credits | Loan disbursals, refunds, and self-transfers are explicitly excluded from income calculation |
 | No temporal split on Home Credit | Home Credit has no usable application dates; must not be claimed as out-of-time validated |
 | One uploaded account only | Cannot verify household costs, other accounts, or off-statement liabilities |
 
@@ -165,7 +177,7 @@ sequenceDiagram
     DB->>DB: INSERT INTO cases (record_hash, ...)
     DB->>File: Write HEAD_HASH = record_hash
     DB-->>App: {case_id, record_hash}
-    App-->>Officer: ✅ Sealed Case ID + Hash prefix
+    App-->>Officer: Sealed Case ID + Hash prefix
 
     Note over DB,File: To verify: verify_hash_chain()\nComputes chain of all stored hashes\nReturns FAIL if any record was altered
 ```
@@ -176,12 +188,16 @@ sequenceDiagram
 
 | Metric | Value | Note |
 |--------|-------|------|
-| LightGBM ROC-AUC | **0.774** | 95% CI: 0.767–0.781 |
-| LightGBM PR-AUC | **0.266** | ~3.3× lift over 8.07% base rate |
+| LightGBM ROC-AUC (Tier 3) | **0.774** | 95% CI: 0.767–0.781 |
+| LightGBM PR-AUC (Tier 3) | **0.266** | ~3.3x lift over 8.07% base rate |
 | Brier Score (calibrated) | **0.067** | Platt-scaled; trivial predictor ≈ 0.074 |
 | Brier Score (raw) | 0.1777 | Pre-calibration, class-weighted output |
 | Alert Threshold | **0.20** | Policy parameter; recall 33.3%, precision 30.5% |
-| Categorisation Accuracy | **98.7%** | 75-case ground-truth fixture |
+| Transaction NLP Accuracy (Tier 1) | **100%** | 10-fold CV on 1,025 curated samples across 18 classes |
+| Transaction NLP Macro F1 (Tier 1) | **1.000** | Calibrated Linear SGD + TF-IDF n-grams |
+| Behavioral Clustering (Tier 2) | **k=4 Personas** | Trained across 2,000 synthetic account profiles |
+| Anomaly Detection (Tier 2) | **5% Contamination** | Isolation Forest (n=150 estimators) on 8 behavioral dimensions |
+| Categorisation Benchmark Accuracy | **98.7%** | 75-case ground-truth fixture |
 | Categorisation Macro F1 | **0.985** | Per-category evaluation |
-| Pytest Tests | **63 passing** | 0 failures, 31 harmless deprecation warnings |
+| Pytest Automated Tests | **71 passing** | 0 failures, 100% passing across full test suite |
 | Policy Stability | **< 5% flip rate** | Monte Carlo, 1,000 trials, ±10% perturbation |

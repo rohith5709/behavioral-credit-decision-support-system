@@ -4,21 +4,29 @@
 > Team: Adharsh S (23BDS0029) · Gowtham Kumar D (23BDS0186) · Rohith S M (23BDS0025)  
 > Faculty Guide: Dr. Viswanathan A
 
-A **Dual-Pillar human-in-the-loop credit decision support platform** for bank loan officers. It combines a deterministic statement cash-flow affordability engine with a calibrated LightGBM default-risk benchmark, unified through a 2×2 decision matrix with SHA-256 tamper-evident audit trails (DPDP Act 2023 compliant). It does not make lending decisions.
+A **Tri-Tier ML & Deterministic Affordability decision support platform** for bank loan officers. It combines transaction-level supervised NLP, account-level unsupervised cash-flow clustering and anomaly detection, and a calibrated macro bureau default-risk benchmark, unified through a 2×2 decision matrix with SHA-256 tamper-evident audit trails (DPDP Act 2023 compliant). It does not make automated lending decisions.
 
-![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)
 ![ROC-AUC](https://img.shields.io/badge/LightGBM%20ROC--AUC-0.774-blue)
 ![PR-AUC](https://img.shields.io/badge/PR--AUC-0.266-blue)
+![NLP-Accuracy](https://img.shields.io/badge/NLP%20CV%20Accuracy-100%25-brightgreen)
 ![Categorisation](https://img.shields.io/badge/categorisation%20F1-0.985-brightgreen)
 
 ---
 
 ## What Is Included
 
-### Pillar 1 — Deterministic Statement Affordability Engine
+### Machine Learning Architecture (Tri-Tier Hierarchy)
+- **Tier 1 (Transaction-Level Supervised NLP ML)**: Trained TF-IDF char/word n-grams + Calibrated Linear SGD pipeline (`models/transaction_nlp_pipeline.joblib`) on 1,025 curated samples across 18 classes; classifies ambiguous and long-tail merchant narrations with calibrated probability scores (100% 10-fold CV accuracy).
+- **Tier 2 (Account-Level Unsupervised Behavioral ML Suite)**: Unsupervised learning (`models/behavioral_unsupervised_bundle.joblib`) operating directly on statement dynamics across 8 dimensions:
+  - **Isolation Forest** (150 estimators, 5% contamination factor) detecting non-linear spending surges or liquidity drains.
+  - **K-Means Clustering** ($k=4$) segmenting accounts into behavioral spending personas (*Disciplined Accumulator*, *Balanced Lifestyle Spender*, *Volatile Cash Flow / Gig Earner*, *Liquidity Strained / High Buffer Drag*).
+- **Tier 3 (Macro Bureau Default Risk Benchmark)**: Calibrated LightGBM model trained on 196,806 applicants with Platt scaling, ROC-AUC 0.774, PR-AUC 0.266, Brier score 0.067, and exact Tree-SHAP interpretability via `booster_.predict(pred_contrib=True)`.
+
+### Pillar 1 — Statement Affordability & Safeguard Engine
 - Multi-format bank CSV parser (HDFC, ICICI, SBI, Axis, Kotak) with preamble-skip, BOM, lakh-comma amounts, Dr/Cr indicators, balance reconciliation, PII masking, and duplicate removal
 - Digital native-text PDF statement parsing via `pdfplumber` (fail-closed on scanned images)
-- 4-layer transaction categorisation: structured payment prefixes (NEFT/IMPS/UPI/NACH) → merchant normalisation → vernacular tokens (Kirana, Vetan, Kist) → Uncertain fallback; **98.7% accuracy on 75-case ground-truth fixture**
+- Hybrid transaction categorisation: structured payment prefixes (NEFT/IMPS/UPI/NACH) → Calibrated Linear NLP classifier (>=65% prob) → Uncertain fallback; **98.7% accuracy on 75-case ground-truth fixture**
 - Loan disbursals, self-transfers, refunds, and wallet top-ups explicitly separated from income
 - 23+ behavioural features: savings ratio, EMI burden, income variation, salary frequency, utility regularity, emergency buffer, income trend, expense volatility
 - 8-component transparent 0–100 affordability score with policy-version stamping and mandatory safeguard overrides
@@ -35,11 +43,11 @@ A **Dual-Pillar human-in-the-loop credit decision support platform** for bank lo
 - Input completeness ratio shown alongside every PD output
 - **The model is never applied to raw uploaded statement transactions**
 
-### Dual-Pillar Integration
+### Dual-Pillar Integration & Synergy
 - 2×2 decision matrix: Q1 (Approve), Q2 (Bureau Alert), Q3 (Cashflow Alert), Q4 (Decline)
 - Interactive **Plotly 2D Risk Map**: applicant coordinates plotted on affordability vs PD axes
 - 4 styled policy quadrant cards with dynamic active-state highlighting
-- Salary slip failure overrides all matrix quadrants
+- Isolation Forest anomaly flags and salary slip discrepancy overrides directly feed into the Officer Review Checklist
 
 ### Persistence & Compliance
 - SQLite with SHA-256 forward hash chain and external anchor (`data/HEAD_HASH.sha256`)
@@ -47,7 +55,7 @@ A **Dual-Pillar human-in-the-loop credit decision support platform** for bank lo
 - Tamper detection via `verify_hash_chain()`
 
 ### Evaluation & Quality
-- **63 pytest tests passing** (0 failures)
+- **71 pytest tests passing** (0 failures)
 - Monte Carlo policy stability: < 5% flip rate over 1,000 trials with ±10% weight perturbation
 - Metamorphic tests: monotonicity and monetary scale invariance formally proved
 
@@ -138,9 +146,9 @@ This creates `reports/affordability_policy_evaluation.json`. It verifies the con
 - Trends are withheld when there are fewer than three months or a partial first/last month. Low-balance measures use daily forward-filled closing balances when a balance column is available.
 - This prototype analyses one uploaded account only. It cannot authenticate the source document or observe household costs, other accounts, cash income, dependants, or off-statement liabilities.
 
-## Statement-compatible ML bridge (Phase 12)
+## Statement-compatible ML architecture
 
-The Home Credit benchmark is deliberately separate from uploaded statements. The future compatible-ML feature contract, safe applicant-data template, and data-readiness validator are documented in [docs/statement_ml_bridge.md](docs/statement_ml_bridge.md). No statement-based ML model is trained or used until consented, anonymised historical applicant data with repayment/default outcomes is available.
+The Home Credit benchmark is deliberately separate from uploaded statements. No statement-based supervised *loan default-outcome* model is claimed without outcome-labeled repayment data. Instead, machine learning is applied directly to bank statements through **Tier 1 Supervised NLP merchant classification** and **Tier 2 Unsupervised cash-flow anomaly detection (Isolation Forest) and spending persona clustering (K-Means)**, alongside the transparent statement affordability policy. Safe applicant-data templates and contracts are documented in [docs/statement_ml_bridge.md](docs/statement_ml_bridge.md).
 
 ## Statement affordability policy
 

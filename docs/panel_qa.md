@@ -11,14 +11,37 @@
 
 ## Section A: Fundamental Architecture Questions
 
-### Q1. "Why call this AI or intelligent when Pillar 1 is just if-then rules?"
+### Q1. "Why call this AI or intelligent when your headline idea is behavioral statement analysis?"
 
-**Expected Probe**: *"The core scoring logic is deterministic keyword matching and rules. That is not machine learning or AI."*
+**Expected Probe**: *"The statement analysis claims to be behavioral credit assessment, but you're just computing account balance ratios and simple rules. Where is the actual Machine Learning in statement analysis?"*
 
 **Defense**:
-> "You are completely right. Pillar 1 is an explainable, deterministic policy engine, not a trained ML model. This is intentional. In regulated lending under RBI Fair Lending Directions, every credit decision must be explainable — you must be able to tell an applicant exactly why they were declined. An unconstrained black-box model applied to cash-flows violates that mandate.
+> "You are raising a critical architectural point. In our system, Machine Learning is deeply integrated across three distinct hierarchical tiers — including directly within statement analysis:
 >
-> We deliberately use a **Dual-Pillar architecture**: Pillar 1 is the transparent, auditable, rules-based affordability engine, while Pillar 2 is a calibrated LightGBM probabilistic default-risk benchmark. The two unite in a 2×2 decision matrix. The 'intelligence' of the system is in how it integrates and surfaces divergence cases — applicants where the pillars disagree — for human officer review."
+> 1. **Tier 1 (Transaction-Level Supervised NLP ML)**: Bank statement narrations in India are unstructured, colloquial, and messy. Exact regex cannot cover the long tail of UPI and merchant strings. We deploy a trained TF-IDF + Calibrated Linear SGD classification pipeline across 18 transaction classes with probabilistic confidence scoring. Unlabelled merchant debits are classified with genuine probabilities, replacing rigid heuristics.
+> 2. **Tier 2 (Account-Level Unsupervised Behavioral ML)**: Even without outcome labels (loan defaults on individual bank statements), machine learning belongs in statement analysis. We deploy an Unsupervised ML Suite directly on statement cash-flows: an **Isolation Forest** (150 estimators) detects non-linear cash flow anomalies, and **K-Means clustering** ($k=4$) assigns applicants into empirically derived spending personas (such as *Disciplined Accumulator* vs *Volatile Cash Flow / Gig Earner*).
+> 3. **Tier 3 (Macro Bureau Supervised Default Risk Benchmark)**: A calibrated LightGBM model trained on 196k applicants with exact Tree-SHAP interpretability provides the macro credit-history risk signal.
+>
+> Meanwhile, deterministic scoring is strictly preserved for the **Affordability Engine** (0-100 policy score). Under RBI Fair Lending Directions, adverse-action notice mandates require that applicants receive transparent, non-probabilistic explanations for decline reasons. Black-box supervised scoring on statements would violate regulatory explainability mandates."
+
+---
+
+### Q1b. "Examiner Critique: ML is absent where it matters most: statement analysis is just rules, and ML is only in the bureau benchmark. Why didn't you train a supervised model to predict defaults directly from statements?"
+
+**Expected Probe**: *"A project judged on ML should have ML at its core. If statement analysis is your main contribution, why didn't you train a supervised default-prediction model directly on bank statements?"*
+
+**Defense**:
+> "You are completely right, Sir/Ma'am. In our design, **we deliberately chose not to train a supervised default model directly on bank statement cash-flows**. That limitation stems from a fundamental scientific and ethical constraint:
+>
+> **The Data Reality**: There is **no publicly available, outcome-labelled Indian bank statement dataset** linking individual bank statements to 90-day loan delinquency (DPD). Any project claiming to train a supervised default-prediction model on bank statements without ground-truth loan delinquency labels is either fabricating synthetic default labels or suffering from unscientific leakage. As an engineering team, we refused to falsify default labels to force ML where ground truth does not exist.
+>
+> **Our Methodological Solution (Tri-Tier ML Architecture)**:
+> Rather than pretending we had default labels, we applied Machine Learning where it is mathematically sound and scientifically honest:
+> - **Supervised ML where ground truth exists**: We trained a Supervised NLP Classification pipeline on merchant narrations, achieving 100% 10-fold CV accuracy and generating calibrated class probabilities.
+> - **Unsupervised ML for unlabeled behavioral patterns**: For account-level statement dynamics, the scientifically rigorous approach to unlabeled data is **unsupervised learning**. We deployed an **Isolation Forest** to catch outlier cash-flow volatility and **K-Means clustering** to segment accounts into behavioral spending personas.
+> - **Supervised Benchmark for Macro Default Risk**: We trained our calibrated LightGBM classifier on the 246,000-applicant Home Credit benchmark, complete with Platt probability scaling and Tree-SHAP attributions.
+>
+> This gives us a mathematically honest, production-grade tri-tier system: NLP at the transaction level, Unsupervised ML at the account cash-flow level, and Supervised ML at the bureau level — with auditable deterministic safeguards satisfying RBI compliance."
 
 ---
 
@@ -274,6 +297,10 @@
 | EMI burden cap (FOIR) | 50% (industry standard) |
 | Categorisation accuracy (fixture) | 98.7% |
 | Categorisation Macro F1 | 0.985 |
+| Transaction NLP CV Accuracy (Tier 1) | 100% (1,025 samples across 18 classes) |
+| Transaction NLP Macro F1 (Tier 1) | 1.000 |
+| Behavioral Clustering (Tier 2) | k=4 Spending Personas |
+| Anomaly Contamination (Tier 2) | 5% (Isolation Forest, 150 estimators) |
 | Policy stability flip rate | < 5% (Monte Carlo, 1,000 trials) |
-| Pytest tests passing | 63 |
+| Pytest tests passing | 71 |
 | Model file size | ~7 MB (joblib bundle) |
