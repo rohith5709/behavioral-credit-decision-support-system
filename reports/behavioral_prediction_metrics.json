@@ -1,0 +1,113 @@
+{
+  "model_name": "RandomForest",
+  "model_version": "behavioral-uci-v1",
+  "dataset": "UCI Default of Credit Card Clients",
+  "total_rows": 30000,
+  "default_rate": 0.2212,
+  "split": {
+    "train": 21000,
+    "calibration": 4500,
+    "test": 4500
+  },
+  "candidate_cv_results": {
+    "LogisticRegression": {
+      "cv_roc_auc_mean": 0.757,
+      "cv_roc_auc_std": 0.0127,
+      "training_seconds": 5.48
+    },
+    "RandomForest": {
+      "cv_roc_auc_mean": 0.7852,
+      "cv_roc_auc_std": 0.0115,
+      "training_seconds": 9.21
+    },
+    "GradientBoosting": {
+      "cv_roc_auc_mean": 0.7814,
+      "cv_roc_auc_std": 0.011,
+      "training_seconds": 17.32
+    }
+  },
+  "selected_model": "RandomForest",
+  "selected_model_cv_roc_auc": 0.7851794274964765,
+  "test_set_metrics": {
+    "roc_auc": 0.7725,
+    "pr_auc": 0.5304,
+    "accuracy": 0.8153,
+    "f1_macro": 0.6859,
+    "f1_default_class": 0.4842,
+    "precision": 0.6331,
+    "recall": 0.392,
+    "true_positives": 390,
+    "false_positives": 226,
+    "true_negatives": 3279,
+    "false_negatives": 605,
+    "confusion_matrix": [
+      [
+        3279,
+        226
+      ],
+      [
+        605,
+        390
+      ]
+    ],
+    "decision_threshold": 0.5,
+    "test_rows": 4500
+  },
+  "permutation_feature_importance": {
+    "PAY_0": 0.0222,
+    "behaviour_average_payment": 0.0133,
+    "behaviour_late_month_count": 0.0092,
+    "behaviour_max_payment_delay": 0.0082,
+    "BILL_AMT1": 0.0046,
+    "behaviour_credit_utilisation": 0.0039,
+    "LIMIT_BAL": 0.0034,
+    "PAY_AMT2": 0.0024,
+    "behaviour_average_bill": 0.0018,
+    "PAY_2": 0.0008,
+    "PAY_AMT1": 0.0002,
+    "behaviour_bill_change": -0.0,
+    "behaviour_debt_increasing": -0.0001,
+    "behaviour_payment_to_bill_ratio": -0.0002,
+    "PAY_3": -0.0003
+  },
+  "calibration_curve": {
+    "fraction_of_positives": [
+      0.0697,
+      0.1502,
+      0.2211,
+      0.3441,
+      0.3692,
+      0.4839,
+      0.6894,
+      0.7222
+    ],
+    "mean_predicted_value": [
+      0.0735,
+      0.1401,
+      0.2407,
+      0.341,
+      0.4491,
+      0.5528,
+      0.6512,
+      0.7236
+    ]
+  },
+  "features": [
+    "behaviour_late_month_count",
+    "behaviour_max_payment_delay",
+    "behaviour_average_bill",
+    "behaviour_average_payment",
+    "behaviour_payment_to_bill_ratio",
+    "behaviour_credit_utilisation",
+    "behaviour_bill_change",
+    "behaviour_debt_increasing",
+    "PAY_0",
+    "PAY_2",
+    "PAY_3",
+    "LIMIT_BAL",
+    "PAY_AMT1",
+    "PAY_AMT2",
+    "BILL_AMT1"
+  ],
+  "artifact_path": "C:\\Users\\rohit\\Documents\\Codex\\2026-09-06\\whi\\credit_decision_system\\models\\behavioral_prediction_model.joblib"
+}

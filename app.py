@@ -10,6 +10,8 @@ import pandas as pd
 import streamlit as st
 
 from src.config import (
+    BEHAVIORAL_METRICS_PATH,
+    BEHAVIORAL_MODEL_PATH,
     HOME_CREDIT_COMPARISON_PATH,
     HOME_CREDIT_CALIBRATION_PATH,
     HOME_CREDIT_METRICS_PATH,
@@ -1026,7 +1028,63 @@ with tab_portfolio:
         st.dataframe(portfolio.head(100), hide_index=True, use_container_width=True)
 
 with tab_validation:
-    st.subheader("Home Credit default-risk model (Pillar 2 Benchmark)")
+    st.subheader("Pillar 1: Behavioral ML Default Risk Model (UCI Credit Default)")
+    if not BEHAVIORAL_METRICS_PATH.exists() or not BEHAVIORAL_MODEL_PATH.exists():
+        st.info("Train the behavioral model to display held-out evaluation metrics.")
+    else:
+        b_metrics = load_metrics(BEHAVIORAL_METRICS_PATH, BEHAVIORAL_METRICS_PATH.stat().st_mtime_ns)
+        b_test = b_metrics.get("test_set_metrics", {})
+        
+        with st.container(border=True):
+            st.markdown(f"#### Selected Model: {b_metrics.get('model_name', 'RandomForest')} (Calibrated Probabilities)")
+            st.caption(
+                f"Trained on {b_metrics.get('total_rows', 30000):,} records from {b_metrics.get('dataset', 'UCI Credit Card Default')}. "
+                f"Stratified Split: 70% Train ({b_metrics.get('split', {}).get('train', 21000):,}) / "
+                f"15% Calibration ({b_metrics.get('split', {}).get('calibration', 4500):,}) / "
+                f"15% Frozen Test ({b_metrics.get('split', {}).get('test', 4500):,})."
+            )
+            bm_c1, bm_c2, bm_c3, bm_c4 = st.columns(4)
+            bm_c1.metric("Held-out ROC-AUC", f"{b_test.get('roc_auc', 0.0):.4f}")
+            bm_c2.metric("Held-out PR-AUC", f"{b_test.get('pr_auc', 0.0):.4f}")
+            bm_c3.metric("Classification Accuracy", f"{b_test.get('accuracy', 0.0):.1%}")
+            bm_c4.metric("F1 (Default Class)", f"{b_test.get('f1_default_class', 0.0):.4f}")
+
+            # Candidate Model 5-Fold Cross Validation Comparison
+            cv_results = b_metrics.get("candidate_cv_results", {})
+            if cv_results:
+                st.markdown("##### Candidate Model 5-Fold Cross-Validation Comparison")
+                cv_rows = []
+                for cand_name, cand_info in cv_results.items():
+                    cv_rows.append({
+                        "Candidate Model": cand_name,
+                        "Mean CV ROC-AUC": f"{cand_info.get('cv_roc_auc_mean', 0.0):.4f}",
+                        "CV Std Dev": f"+/- {cand_info.get('cv_roc_auc_std', 0.0):.4f}",
+                        "Training Time": f"{cand_info.get('training_seconds', 0.0):.2f}s",
+                        "Selection Status": "Selected Winner" if cand_name == b_metrics.get("selected_model") else "Evaluated",
+                    })
+                st.dataframe(pd.DataFrame(cv_rows), hide_index=True, use_container_width=True)
+
+            # Feature Importance & Confusion Matrix
+            fi_col, cm_col = st.columns([1.2, 1])
+            with fi_col:
+                st.markdown("##### Unbiased Permutation Feature Importance")
+                pfi = b_metrics.get("permutation_feature_importance", {})
+                if pfi:
+                    pfi_rows = [{"Behavioral Feature": k, "Permutation Importance (Mean ROC-AUC drop)": v} for k, v in list(pfi.items())[:8]]
+                    st.dataframe(pd.DataFrame(pfi_rows), hide_index=True, use_container_width=True)
+            with cm_col:
+                st.markdown("##### Held-Out Confusion Matrix (4,500 Test Rows)")
+                cm = b_test.get("confusion_matrix", [[0, 0], [0, 0]])
+                cm_df = pd.DataFrame(
+                    cm,
+                    index=["Actual Non-Default", "Actual Default"],
+                    columns=["Predicted Non-Default", "Predicted Default"],
+                )
+                st.dataframe(cm_df, use_container_width=True)
+                st.caption(f"Precision: {b_test.get('precision', 0.0):.1%} | Recall: {b_test.get('recall', 0.0):.1%}")
+
+    st.markdown("---")
+    st.subheader("Pillar 2: Home Credit Default-Risk Model (Bureau Benchmark)")
     if not HOME_CREDIT_METRICS_PATH.exists() or not HOME_CREDIT_MODEL_PATH.exists():
         st.info("Train the Home Credit model to display held-out evaluation metrics.")
     else:

@@ -32,6 +32,9 @@ external/
 # so that the validation dashboard works after cloning.
 models/*
 !models/home_credit_lightgbm.joblib
+!models/transaction_nlp_pipeline.joblib
+!models/behavioral_unsupervised_bundle.joblib
+!models/behavioral_prediction_model.joblib
 
 # Version only the small, presentation-ready evaluation artefacts.
 reports/*
@@ -46,6 +49,9 @@ reports/*
 !reports/affordability_policy_evaluation.json
 !reports/heldout_category_rule_evaluation.json
 !reports/uci_metrics.json
+!reports/transaction_nlp_metrics.json
+!reports/behavioral_unsupervised_metrics.json
+!reports/behavioral_prediction_metrics.json
 
 # Editor and operating-system files
 .vscode/
