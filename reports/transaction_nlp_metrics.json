@@ -1,0 +1,10 @@
+{
+  "model_name": "Tfidf_Calibrated_Linear_NLP",
+  "training_samples": 1025,
+  "classes_count": 18,
+  "cv_accuracy_mean": 1.0,
+  "cv_accuracy_std": 0.0,
+  "cv_f1_macro_mean": 1.0,
+  "cv_f1_macro_std": 0.0,
+  "artifact_path": "C:\\Users\\rohit\\Documents\\Codex\\2026-09-06\\whi\\credit_decision_system\\models\\transaction_nlp_pipeline.joblib"
+}
