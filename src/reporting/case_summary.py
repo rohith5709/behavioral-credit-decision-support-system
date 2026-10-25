@@ -12,6 +12,7 @@ from src.documents.statement_csv import StatementQualityReport
 REVIEW_MARKERS = (
     "Fewer than", "quality", "No recognised", "contradict", "critical review threshold",
     "Emergency cash buffer", "Too many transaction categories", "differ materially",
+    "anomaly", "isolation forest", "unsupervised",
 )
 
 
@@ -74,15 +75,30 @@ def build_case_summary_rows(
 
 
 def build_decision_record(
-    base_record: dict[str, Any], decision: Decision, quality_report: StatementQualityReport | None,
+    base_record: dict[str, Any],
+    decision: Decision,
+    quality_report: StatementQualityReport | None,
+    behavioral_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Enrich a prototype decision log with scope, status, flags, and policy evidence."""
     status, status_message = case_status(decision.recommendation)
-    return base_record | {
+    review_flags = extract_review_flags(decision.reasons)
+
+    # Check for unsupervised behavioral anomaly detection
+    prof = behavioral_profile or base_record.get("behavioral_unsupervised_ml") or base_record.get("behavioral_ml")
+    if prof and isinstance(prof, dict):
+        anom = prof.get("anomaly_detection", {})
+        if anom.get("is_anomaly"):
+            anom_score = anom.get("anomaly_score", 0.0)
+            flag_msg = f"Unsupervised ML Anomaly Safeguard: Isolation Forest detected atypical cash flow volatility (Anomaly score: {anom_score:.2f})."
+            if flag_msg not in review_flags:
+                review_flags.append(flag_msg)
+
+    enriched = base_record | {
         "record_type": "prototype_decision_log",
         "visual_status": status,
         "status_message": status_message,
-        "mandatory_review_flags": extract_review_flags(decision.reasons),
+        "mandatory_review_flags": review_flags,
         "statement_quality_warnings": list(quality_report.warnings) if quality_report else [],
         "evidence_boundary": (
             "CSV statement evidence from one uploaded account only. It does not authenticate documents, "
@@ -90,3 +106,6 @@ def build_decision_record(
         ),
         "home_credit_model_scope": "Separate benchmark only; not applied to this uploaded statement.",
     }
+    if prof:
+        enriched["behavioral_unsupervised_ml"] = prof
+    return enriched

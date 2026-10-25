@@ -259,16 +259,16 @@ def score_behavioral_profile(statement_features: dict[str, Any]) -> dict[str, An
             val = 0.0
         values.append(float(val))
 
-    X_raw = np.array([values])
-    X_scaled = scaler.transform(X_raw)
+    X_df = pd.DataFrame([values], columns=features_list)
+    X_scaled = scaler.transform(X_df)
 
     # 1. Anomaly Scoring
     # score_samples returns opposite of anomaly score; lower = more abnormal
-    raw_anomaly_score = iso_forest.score_samples(X_raw)[0]
+    raw_anomaly_score = iso_forest.score_samples(X_df)[0]
     # Normalize anomaly score roughly to [0, 1] where >0.65 indicates anomaly
     # Typical score_samples range is [-0.8, -0.4]
     normalized_anomaly_score = float(np.clip(( -raw_anomaly_score - 0.40) / 0.40, 0.0, 1.0))
-    is_anomaly = bool(iso_forest.predict(X_raw)[0] == -1)
+    is_anomaly = bool(iso_forest.predict(X_df)[0] == -1)
 
     # 2. Cluster / Persona Assignment
     cluster_idx = int(kmeans.predict(X_scaled)[0])
@@ -284,6 +284,11 @@ def score_behavioral_profile(statement_features: dict[str, Any]) -> dict[str, An
         "color": "#94A3B8",
     })
 
+    # Cluster center values in raw feature space (inverse transform)
+    raw_center = scaler.inverse_transform([kmeans.cluster_centers_[cluster_idx]])[0]
+    cluster_center_map = {feat: round(float(raw_center[i]), 3) for i, feat in enumerate(features_list)}
+    applicant_values_map = {feat: round(float(values[i]), 3) for i, feat in enumerate(features_list)}
+
     return {
         "status": "scored",
         "anomaly_detection": {
@@ -298,6 +303,8 @@ def score_behavioral_profile(statement_features: dict[str, Any]) -> dict[str, An
             "risk_profile": persona["risk_profile"],
             "color": persona["color"],
             "fit_confidence": round(fit_confidence, 2),
+            "applicant_metrics": applicant_values_map,
+            "cohort_center_metrics": cluster_center_map,
         },
     }
 

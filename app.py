@@ -574,6 +574,13 @@ with tab_summary:
         )
 
         review_flags = extract_review_flags(decision.reasons)
+        behavioral_ml_tab1 = score_behavioral_profile(st.session_state.features)
+        if behavioral_ml_tab1.get("status") == "scored" and behavioral_ml_tab1.get("anomaly_detection", {}).get("is_anomaly"):
+            anom = behavioral_ml_tab1["anomaly_detection"]
+            anom_flag = f"Unsupervised ML Anomaly Safeguard: Isolation Forest detected atypical cash flow volatility (Anomaly score: {anom['anomaly_score']:.2f})."
+            if anom_flag not in review_flags:
+                review_flags.append(anom_flag)
+
         with st.container(border=True):
             st.markdown("#### Officer Review Checklist")
             if review_flags:
@@ -674,19 +681,50 @@ with tab_upload:
                 st.warning(warning)
 
         st.markdown("#### Categorised transactions")
-        st.caption("Review uncertain categories before using the summary. An override preserves the initial category, reviewer, rationale, and UTC timestamp in this prototype case record.")
+        st.caption("Review uncertain categories before using the summary. Transactions are classified via hybrid deterministic accounting rules and supervised TF-IDF + Calibrated Linear NLP machine learning.")
+
         editable = st.session_state.statement.copy()
+        
+        # Supervised NLP and Rule matching breakdown
+        total_tx = len(editable)
+        nlp_matches = int(editable["category_review_status"].astype(str).str.startswith("NLP ML match").sum()) if "category_review_status" in editable.columns else 0
+        rule_matches = int(editable["category_review_status"].astype(str).eq("Deterministic rule").sum()) if "category_review_status" in editable.columns else 0
+        uncertain_tx = int(editable["category_review_status"].astype(str).eq("Uncertain / needs review").sum()) if "category_review_status" in editable.columns else 0
+
+        with st.container(border=True):
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("Total Transactions", total_tx)
+            mc2.metric("Deterministic Rules", rule_matches, help="Verified salary, recurring EMI, transfers, and statutory tax patterns")
+            mc3.metric("NLP ML Matches", nlp_matches, help="Classified by Calibrated Linear NLP model with >=65% calibrated probability")
+            mc4.metric("Uncertain / Review Needed", uncertain_tx, help="Ambiguous or unlabelled entries requiring officer review")
+
         editable["officer_category"] = editable["category"]
         if "category_override_rationale" not in editable:
             editable["category_override_rationale"] = ""
         editable["category_reviewer"] = officer_name or "Not supplied"
+        
+        column_configs = {
+            "officer_category": st.column_config.SelectboxColumn("Officer category", options=list(CATEGORY_OPTIONS)),
+            "category_confidence": st.column_config.ProgressColumn(
+                "Classification Confidence",
+                help="Model confidence: 1.0 for exact rules, calibrated probability for NLP",
+                min_value=0.0,
+                max_value=1.0,
+                format="%.0f%%",
+            ),
+            "category_review_status": st.column_config.TextColumn(
+                "Match Source / Tier",
+                help="Identifies whether transaction was matched via deterministic accounting rules, NLP ML classifier, or officer override",
+            ),
+        }
+
         edited = st.data_editor(
             editable,
             key="category_review",
             hide_index=True,
             use_container_width=True,
             disabled=[column for column in editable.columns if column not in {"officer_category", "category_override_rationale"}],
-            column_config={"officer_category": st.column_config.SelectboxColumn("Officer category", options=list(CATEGORY_OPTIONS))},
+            column_config=column_configs,
         )
         if st.button("Apply category overrides"):
             if "original_category" not in edited:
@@ -809,6 +847,32 @@ with tab_profile:
                         """,
                         unsafe_allow_html=True,
                     )
+
+                with st.expander("Behavioral Persona Cluster Dimensions & Cohort Centroid Diagnostics", expanded=False):
+                    applicant_m = persona.get("applicant_metrics", {})
+                    cohort_m = persona.get("cohort_center_metrics", {})
+                    if applicant_m and cohort_m:
+                        dim_rows = []
+                        feature_labels = {
+                            "savings_ratio": ("Savings Margin Ratio", "{:.1%}"),
+                            "income_variation_ratio": ("Income Variation Volatility", "{:.1%}"),
+                            "expense_variation_ratio": ("Expense Variation Volatility", "{:.1%}"),
+                            "effective_monthly_emi": ("Effective Monthly EMI Burden", "INR {:,.0f}"),
+                            "cash_withdrawal_share": ("Cash Withdrawal Debit Share", "{:.1%}"),
+                            "low_balance_day_count": ("Low Balance Day Count", "{:.0f} days"),
+                            "emergency_buffer_months": ("Emergency Cash Buffer", "{:.1f} months"),
+                            "uncertain_transaction_share": ("Uncertain Transaction Share", "{:.1%}"),
+                        }
+                        for k, (lbl, fmt) in feature_labels.items():
+                            app_val = applicant_m.get(k, 0.0)
+                            coh_val = cohort_m.get(k, 0.0)
+                            dim_rows.append({
+                                "Behavioral Dimension": lbl,
+                                "Applicant Value": fmt.format(app_val),
+                                "Cohort Centroid": fmt.format(coh_val),
+                                "Variance vs Centroid": f"{(app_val - coh_val):+.2f}",
+                            })
+                        st.dataframe(pd.DataFrame(dim_rows), hide_index=True, use_container_width=True)
 
         with st.container(border=True):
             st.markdown("#### Primary Monthly Cash Flow Indicators")
@@ -1237,6 +1301,7 @@ with tab_decision:
     if not consent:
         st.info("Confirm applicant consent and choose an officer action to create a decision record.")
     if st.button("Create decision record", disabled=not can_create_record):
+        behavioral_ml_tab6 = score_behavioral_profile(st.session_state.features)
         base_record = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "applicant_id": applicant_id or None,
@@ -1251,6 +1316,7 @@ with tab_decision:
             "officer_action": override,
             "officer_rationale": rationale,
             "statement_features": st.session_state.features,
+            "behavioral_unsupervised_ml": behavioral_ml_tab6,
             "affordability_score": decision.affordability_score,
             "affordability_components": decision.affordability_components,
             "model_probability": bureau_prob,
@@ -1261,7 +1327,7 @@ with tab_decision:
             "home_credit_model_version": model_version,
             "model_available": Path(MODEL_PATH).exists(),
         }
-        record = build_decision_record(base_record, decision, st.session_state.quality_report)
+        record = build_decision_record(base_record, decision, st.session_state.quality_report, behavioral_profile=behavioral_ml_tab6)
         saved_meta = save_case_record(record)
         st.markdown(
             f"""
@@ -1290,21 +1356,31 @@ with tab_decision:
         recent_cases = get_case_records(limit=10)
         if recent_cases:
             st.caption("Recent sealed case records in SQLite database:")
+            display_records = []
+            for r in recent_cases:
+                persona_tag = "N/A"
+                if "full_record_json" in r.keys():
+                    try:
+                        parsed_rec = json.loads(r["full_record_json"])
+                        bml = parsed_rec.get("behavioral_unsupervised_ml", {})
+                        if isinstance(bml, dict) and bml.get("behavioral_persona"):
+                            persona_tag = bml["behavioral_persona"].get("name", "N/A")
+                    except Exception:
+                        pass
+                display_records.append({
+                    "Case ID": r["case_id"],
+                    "Timestamp": r["timestamp_utc"][:19] if r["timestamp_utc"] else "-",
+                    "Applicant": r["applicant_id"] or "N/A",
+                    "Requested": f"INR {r['requested_amount']:,.0f}" if r["requested_amount"] else "-",
+                    "Score": f"{r['affordability_score']}/100" if r["affordability_score"] is not None else "-",
+                    "Bureau PD": f"{r['bureau_probability']:.1%}" if r["bureau_probability"] is not None else "-",
+                    "Behavioral Persona": persona_tag,
+                    "Recommendation": r["system_recommendation"],
+                    "Officer Action": r["officer_action"],
+                    "Record Hash": r["record_hash"][:12] + "...",
+                })
             st.dataframe(
-                pd.DataFrame([
-                    {
-                        "Case ID": r["case_id"],
-                        "Timestamp": r["timestamp_utc"][:19] if r["timestamp_utc"] else "-",
-                        "Applicant": r["applicant_id"] or "N/A",
-                        "Requested": f"INR {r['requested_amount']:,.0f}" if r["requested_amount"] else "-",
-                        "Score": f"{r['affordability_score']}/100" if r["affordability_score"] is not None else "-",
-                        "Bureau PD": f"{r['bureau_probability']:.1%}" if r["bureau_probability"] is not None else "-",
-                        "Recommendation": r["system_recommendation"],
-                        "Officer Action": r["officer_action"],
-                        "Record Hash": r["record_hash"][:12] + "...",
-                    }
-                    for r in recent_cases
-                ]),
+                pd.DataFrame(display_records),
                 hide_index=True,
                 use_container_width=True,
             )

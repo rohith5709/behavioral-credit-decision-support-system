@@ -66,3 +66,25 @@ def test_status_and_review_flag_helpers_are_explicit():
     assert case_status("Manual review")[0] == "Amber"
     assert case_status("Does not meet indicative affordability criteria")[0] == "Red"
     assert extract_review_flags(["Savings ratio is 20.0%.", "Fewer than three months of transactions are available."])
+
+
+def test_decision_record_integrates_unsupervised_ml_anomaly():
+    report = _quality_report()
+    decision = recommend(None, _features(), quality_report=report)
+    behavioral_profile = {
+        "status": "scored",
+        "anomaly_detection": {
+            "is_anomaly": True,
+            "anomaly_score": 0.82,
+            "verdict": "Elevated Cash Flow Outlier Detected",
+        },
+        "behavioral_persona": {
+            "name": "Volatile Cash Flow / Gig Earner",
+            "risk_profile": "Moderate to High Risk",
+        },
+    }
+    record = build_decision_record({"applicant_id": "APP-ANOM-1"}, decision, report, behavioral_profile=behavioral_profile)
+    assert record["record_type"] == "prototype_decision_log"
+    assert "behavioral_unsupervised_ml" in record
+    assert any("Isolation Forest detected atypical cash flow volatility" in flag for flag in record["mandatory_review_flags"])
+
